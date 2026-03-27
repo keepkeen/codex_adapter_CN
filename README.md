@@ -8,34 +8,7 @@ Upstream OpenAI Codex docs still live at <a href="https://developers.openai.com/
 </br>If you want the upstream OpenAI desktop app experience, run <code>codex-cn app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
 </br>If you are looking for the <em>cloud-based agent</em> from OpenAI, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
 
----
-
-## Quickstart
-
-### Installing and running codex-cn
-
-Install globally with your preferred package manager:
-
-```shell
-# Install using npm
-npm install -g @keepkeen/codex-cn
-```
-
-Then simply run `codex-cn` to get started.
-
-<details>
-<summary>You can also go to the <a href="https://github.com/keepkeen/codex_adapter_CN/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
-
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
-
-- macOS
-  - Apple Silicon/arm64: `codex-cn-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-cn-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-cn-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-cn-aarch64-unknown-linux-musl.tar.gz`
-
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-cn-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex-cn` after extracting it.
+--
 
 </details>
 
