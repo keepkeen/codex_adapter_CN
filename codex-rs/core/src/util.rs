@@ -234,7 +234,32 @@ pub fn normalize_thread_name(name: &str) -> Option<String> {
     }
 }
 
+pub fn current_cli_name() -> &'static str {
+    let process_name = std::env::args_os()
+        .next()
+        .and_then(|arg0| {
+            Path::new(&arg0)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+            })
+        });
+    cli_name_from_process_name(process_name.as_deref())
+}
+
 pub fn resume_command(thread_name: Option<&str>, thread_id: Option<ThreadId>) -> Option<String> {
+    resume_command_for_cli(current_cli_name(), thread_name, thread_id)
+}
+
+pub fn resume_command_for_cli(
+    cli_name: &str,
+    thread_name: Option<&str>,
+    thread_id: Option<ThreadId>,
+) -> Option<String> {
     let resume_target = thread_name
         .filter(|name| !name.is_empty())
         .map(str::to_string)
@@ -243,11 +268,21 @@ pub fn resume_command(thread_name: Option<&str>, thread_id: Option<ThreadId>) ->
         let needs_double_dash = target.starts_with('-');
         let escaped = shlex_join(&[target]);
         if needs_double_dash {
-            format!("codex resume -- {escaped}")
+            format!("{cli_name} resume -- {escaped}")
         } else {
-            format!("codex resume {escaped}")
+            format!("{cli_name} resume {escaped}")
         }
     })
+}
+
+fn cli_name_from_process_name(process_name: Option<&str>) -> &'static str {
+    match process_name
+        .and_then(|name| Path::new(name).file_stem())
+        .and_then(|stem| stem.to_str())
+    {
+        Some("codex-cn") => "codex-cn",
+        _ => "codex",
+    }
 }
 
 #[cfg(test)]

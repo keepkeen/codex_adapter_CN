@@ -20,8 +20,10 @@ use crate::config_loader::ConfigLayerStackOrdering;
 use crate::config_loader::default_project_root_markers;
 use crate::config_loader::merge_toml_values;
 use crate::config_loader::project_root_markers_from_config;
+use crate::model_provider_info::WireApi;
 use codex_app_server_protocol::ConfigLayerSource;
 use codex_features::Feature;
+use codex_protocol::provider_profiles::ProviderFeature;
 use dunce::canonicalize as normalize_path;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
@@ -41,7 +43,12 @@ pub const LOCAL_PROJECT_DOC_FILENAME: &str = "AGENTS.override.md";
 const PROJECT_DOC_SEPARATOR: &str = "\n\n--- project-doc ---\n\n";
 
 fn render_js_repl_instructions(config: &Config) -> Option<String> {
-    if !config.features.enabled(Feature::JsRepl) {
+    if !config.features.enabled(Feature::JsRepl)
+        || config
+            .model_provider
+            .built_in_profile()
+            .is_some_and(|profile| !profile.supports(ProviderFeature::JsRepl))
+    {
         return None;
     }
 
@@ -49,7 +56,11 @@ fn render_js_repl_instructions(config: &Config) -> Option<String> {
     section.push_str(
         "- Use `js_repl` for Node-backed JavaScript with top-level await in a persistent kernel.\n",
     );
-    section.push_str("- `js_repl` is a freeform/custom tool. Direct `js_repl` calls must send raw JavaScript tool input (optionally with first-line `// codex-js-repl: timeout_ms=15000`). Do not wrap code in JSON (for example `{\"code\":\"...\"}`), quotes, or markdown code fences.\n");
+    if config.model_provider.wire_api == WireApi::Chat {
+        section.push_str("- On chat-completions providers, `js_repl` is exposed as a function tool. Put the full JavaScript program in the `code` field, and optionally set `timeout_ms`; you may still start `code` with `// codex-js-repl: timeout_ms=15000`. Do not wrap the JavaScript in markdown fences or extra quoting inside `code`.\n");
+    } else {
+        section.push_str("- `js_repl` is a freeform/custom tool. Direct `js_repl` calls must send raw JavaScript tool input (optionally with first-line `// codex-js-repl: timeout_ms=15000`). Do not wrap code in JSON (for example `{\"code\":\"...\"}`), quotes, or markdown code fences.\n");
+    }
     section.push_str(
         "- Helpers: `codex.cwd`, `codex.homeDir`, `codex.tmpDir`, `codex.tool(name, args?)`, and `codex.emitImage(imageLike)`.\n",
     );

@@ -467,3 +467,24 @@ fn resume_command_quotes_thread_name_when_needed() {
     let command = resume_command(Some("quote'case"), None);
     assert_eq!(command, Some("codex resume \"quote'case\"".to_string()));
 }
+
+#[test]
+fn resume_command_for_cli_supports_codex_cn() {
+    let command = resume_command_for_cli("codex-cn", Some("my-thread"), None);
+    assert_eq!(command, Some("codex-cn resume my-thread".to_string()));
+}
+
+#[test]
+fn cli_name_from_process_name_detects_codex_cn() {
+    assert_eq!(cli_name_from_process_name(Some("codex-cn")), "codex-cn");
+    assert_eq!(
+        cli_name_from_process_name(Some("/tmp/codex-cn.exe")),
+        "codex-cn"
+    );
+    assert_eq!(cli_name_from_process_name(Some("codex")), "codex");
+    assert_eq!(
+        cli_name_from_process_name(Some("cargo-test-binary")),
+        "codex"
+    );
+    assert_eq!(cli_name_from_process_name(None), "codex");
+}

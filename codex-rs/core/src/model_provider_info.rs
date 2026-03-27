@@ -9,6 +9,9 @@ use crate::auth::AuthMode;
 use crate::error::EnvVarError;
 use codex_api::Provider as ApiProvider;
 use codex_api::provider::RetryConfig as ApiRetryConfig;
+use codex_protocol::provider_profiles::BuiltInProviderProfile;
+use codex_protocol::provider_profiles::built_in_provider_profile;
+use codex_protocol::provider_profiles::infer_built_in_provider_id;
 use http::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -29,9 +32,13 @@ const MAX_STREAM_MAX_RETRIES: u64 = 100;
 const MAX_REQUEST_MAX_RETRIES: u64 = 100;
 
 const OPENAI_PROVIDER_NAME: &str = "OpenAI";
-pub const OPENAI_PROVIDER_ID: &str = "openai";
 pub(crate) const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub(crate) const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
+pub use codex_protocol::provider_profiles::DEEPSEEK_PROVIDER_ID;
+pub use codex_protocol::provider_profiles::GLM_PROVIDER_ID;
+pub use codex_protocol::provider_profiles::KIMI_PROVIDER_ID;
+pub use codex_protocol::provider_profiles::MINIMAX_PROVIDER_ID;
+pub use codex_protocol::provider_profiles::OPENAI_PROVIDER_ID;
 
 /// Wire protocol that the provider speaks.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
@@ -292,29 +299,21 @@ impl ModelProviderInfo {
         self.name == OPENAI_PROVIDER_NAME
     }
 
-    pub(crate) fn known_provider_id(&self) -> Option<&'static str> {
-        let base_url = self.base_url.as_deref();
-        let env_key = self.env_key.as_deref();
+    pub fn known_provider_id(&self) -> Option<&'static str> {
+        let base_url = self
+            .base_url
+            .as_deref()
+            .or_else(|| self.is_openai().then_some("https://api.openai.com/v1"));
+        infer_built_in_provider_id(
+            &self.name,
+            base_url,
+            self.env_key.as_deref(),
+            self.wire_api == WireApi::Chat,
+        )
+    }
 
-        match (self.name.as_str(), base_url, env_key) {
-            ("DeepSeek", Some("https://api.deepseek.com"), Some("DEEPSEEK_API_KEY")) => {
-                Some(DEEPSEEK_PROVIDER_ID)
-            }
-            (
-                "GLM (Zhipu AI)",
-                Some("https://open.bigmodel.cn/api/paas/v4"),
-                Some("GLM_API_KEY"),
-            ) => Some(GLM_PROVIDER_ID),
-            (
-                "Kimi (Moonshot AI)",
-                Some("https://api.moonshot.cn/v1"),
-                Some("MOONSHOT_API_KEY"),
-            ) => Some(KIMI_PROVIDER_ID),
-            ("MiniMax", Some("https://api.minimaxi.com/v1"), Some("MINIMAX_API_KEY")) => {
-                Some(MINIMAX_PROVIDER_ID)
-            }
-            _ => None,
-        }
+    pub fn built_in_profile(&self) -> Option<&'static BuiltInProviderProfile> {
+        self.known_provider_id().and_then(built_in_provider_profile)
     }
 }
 
@@ -323,11 +322,6 @@ pub const DEFAULT_OLLAMA_PORT: u16 = 11434;
 
 pub const LMSTUDIO_OSS_PROVIDER_ID: &str = "lmstudio";
 pub const OLLAMA_OSS_PROVIDER_ID: &str = "ollama";
-pub const DEEPSEEK_PROVIDER_ID: &str = "deepseek";
-pub const GLM_PROVIDER_ID: &str = "glm";
-pub const KIMI_PROVIDER_ID: &str = "kimi";
-pub const MINIMAX_PROVIDER_ID: &str = "minimax";
-
 /// Built-in default provider list.
 pub fn built_in_model_providers(
     openai_base_url: Option<String>,
@@ -399,77 +393,46 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
 }
 
 fn create_deepseek_provider() -> ModelProviderInfo {
-    ModelProviderInfo {
-        name: "DeepSeek".into(),
-        base_url: Some("https://api.deepseek.com".into()),
-        env_key: Some("DEEPSEEK_API_KEY".into()),
-        env_key_instructions: Some(
-            "Get your API key from https://platform.deepseek.com/api_keys".into(),
-        ),
-        experimental_bearer_token: None,
-        wire_api: WireApi::Chat,
-        query_params: None,
-        http_headers: None,
-        env_http_headers: None,
-        request_max_retries: None,
-        stream_max_retries: None,
-        stream_idle_timeout_ms: None,
-        websocket_connect_timeout_ms: None,
-        requires_openai_auth: false,
-        supports_websockets: false,
-    }
+    create_built_in_chat_provider(
+        DEEPSEEK_PROVIDER_ID,
+        "Get your API key from https://platform.deepseek.com/api_keys",
+    )
 }
 
 fn create_glm_provider() -> ModelProviderInfo {
-    ModelProviderInfo {
-        name: "GLM (Zhipu AI)".into(),
-        base_url: Some("https://open.bigmodel.cn/api/paas/v4".into()),
-        env_key: Some("GLM_API_KEY".into()),
-        env_key_instructions: Some(
-            "Get your API key from https://open.bigmodel.cn/usercenter/apikeys".into(),
-        ),
-        experimental_bearer_token: None,
-        wire_api: WireApi::Chat,
-        query_params: None,
-        http_headers: None,
-        env_http_headers: None,
-        request_max_retries: None,
-        stream_max_retries: None,
-        stream_idle_timeout_ms: None,
-        websocket_connect_timeout_ms: None,
-        requires_openai_auth: false,
-        supports_websockets: false,
-    }
+    create_built_in_chat_provider(
+        GLM_PROVIDER_ID,
+        "Get your API key from https://open.bigmodel.cn/usercenter/apikeys",
+    )
 }
 
 fn create_kimi_provider() -> ModelProviderInfo {
-    ModelProviderInfo {
-        name: "Kimi (Moonshot AI)".into(),
-        base_url: Some("https://api.moonshot.cn/v1".into()),
-        env_key: Some("MOONSHOT_API_KEY".into()),
-        env_key_instructions: Some(
-            "Get your API key from https://platform.moonshot.cn/console/api-keys".into(),
-        ),
-        experimental_bearer_token: None,
-        wire_api: WireApi::Chat,
-        query_params: None,
-        http_headers: None,
-        env_http_headers: None,
-        request_max_retries: None,
-        stream_max_retries: None,
-        stream_idle_timeout_ms: None,
-        websocket_connect_timeout_ms: None,
-        requires_openai_auth: false,
-        supports_websockets: false,
-    }
+    create_built_in_chat_provider(
+        KIMI_PROVIDER_ID,
+        "Get your API key from https://platform.moonshot.cn/console/api-keys",
+    )
 }
 
 fn create_minimax_provider() -> ModelProviderInfo {
+    create_built_in_chat_provider(
+        MINIMAX_PROVIDER_ID,
+        "Get your API key from https://www.minimaxi.com/user-center/basic-information/interface-key",
+    )
+}
+
+fn create_built_in_chat_provider(
+    provider_id: &str,
+    env_key_instructions: &str,
+) -> ModelProviderInfo {
+    let profile = built_in_provider_profile(provider_id)
+        .unwrap_or_else(|| panic!("missing built-in provider profile: {provider_id}"));
+    let descriptor = profile.descriptor;
+
     ModelProviderInfo {
-        name: "MiniMax".into(),
-        base_url: Some("https://api.minimaxi.com/v1".into()),
-        env_key: Some("MINIMAX_API_KEY".into()),
-        env_key_instructions: Some("Get your API key from https://www.minimaxi.com/user-center/basic-information/interface-key".into()),
+        name: descriptor.display_name.into(),
+        base_url: Some(descriptor.default_base_url.into()),
+        env_key: descriptor.default_env_key.map(str::to_string),
+        env_key_instructions: Some(env_key_instructions.into()),
         experimental_bearer_token: None,
         wire_api: WireApi::Chat,
         query_params: None,

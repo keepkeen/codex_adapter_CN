@@ -6,6 +6,9 @@ use codex_client::StreamResponse;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::TokenUsage;
+use codex_protocol::provider_profiles::BuiltInProviderProfile;
+use codex_protocol::provider_profiles::ChatReasoningFormat;
 use eventsource_stream::Eventsource;
 use futures::Stream;
 use futures::StreamExt;
@@ -26,10 +29,18 @@ pub(crate) fn spawn_chat_stream(
     idle_timeout: Duration,
     telemetry: Option<Arc<dyn SseTelemetry>>,
     _turn_state: Option<Arc<OnceLock<String>>>,
+    provider_profile: Option<&'static BuiltInProviderProfile>,
 ) -> ResponseStream {
     let (tx_event, rx_event) = mpsc::channel::<Result<ResponseEvent, ApiError>>(1600);
     tokio::spawn(async move {
-        process_chat_sse(stream_response.bytes, tx_event, idle_timeout, telemetry).await;
+        process_chat_sse(
+            stream_response.bytes,
+            tx_event,
+            idle_timeout,
+            telemetry,
+            provider_profile,
+        )
+        .await;
     });
     ResponseStream { rx_event }
 }
@@ -39,6 +50,7 @@ pub async fn process_chat_sse<S>(
     tx_event: mpsc::Sender<Result<ResponseEvent, ApiError>>,
     idle_timeout: Duration,
     telemetry: Option<Arc<dyn SseTelemetry>>,
+    provider_profile: Option<&'static BuiltInProviderProfile>,
 ) where
     S: Stream<Item = Result<bytes::Bytes, codex_client::TransportError>> + Unpin,
 {
@@ -59,12 +71,14 @@ pub async fn process_chat_sse<S>(
     let mut last_tool_call_index: Option<usize> = None;
     let mut assistant_item: Option<ResponseItem> = None;
     let mut reasoning_item: Option<ResponseItem> = None;
-    let mut completed_sent = false;
+    let mut token_usage: Option<TokenUsage> = None;
+    let completed_sent = false;
 
     async fn flush_and_complete(
         tx_event: &mpsc::Sender<Result<ResponseEvent, ApiError>>,
         reasoning_item: &mut Option<ResponseItem>,
         assistant_item: &mut Option<ResponseItem>,
+        token_usage: Option<TokenUsage>,
     ) {
         if let Some(reasoning) = reasoning_item.take() {
             let _ = tx_event
@@ -81,7 +95,7 @@ pub async fn process_chat_sse<S>(
         let _ = tx_event
             .send(Ok(ResponseEvent::Completed {
                 response_id: String::new(),
-                token_usage: None,
+                token_usage,
             }))
             .await;
     }
@@ -100,7 +114,13 @@ pub async fn process_chat_sse<S>(
             }
             Ok(None) => {
                 if !completed_sent {
-                    flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item).await;
+                    flush_and_complete(
+                        &tx_event,
+                        &mut reasoning_item,
+                        &mut assistant_item,
+                        token_usage.clone(),
+                    )
+                    .await;
                 }
                 return;
             }
@@ -121,7 +141,13 @@ pub async fn process_chat_sse<S>(
 
         if data == "[DONE]" || data == "DONE" {
             if !completed_sent {
-                flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item).await;
+                flush_and_complete(
+                    &tx_event,
+                    &mut reasoning_item,
+                    &mut assistant_item,
+                    token_usage.clone(),
+                )
+                .await;
             }
             return;
         }
@@ -134,13 +160,23 @@ pub async fn process_chat_sse<S>(
             }
         };
 
+        if let Some(parsed_usage) = parse_chat_usage(&value, provider_profile) {
+            token_usage = Some(parsed_usage);
+        }
+
         let Some(choices) = value.get("choices").and_then(Value::as_array) else {
             continue;
         };
 
         for choice in choices {
             if let Some(delta) = choice.get("delta") {
-                append_reasoning_from_value(&tx_event, &mut reasoning_item, delta).await;
+                append_reasoning_from_value(
+                    &tx_event,
+                    &mut reasoning_item,
+                    delta,
+                    provider_profile,
+                )
+                .await;
 
                 if let Some(content) = delta.get("content") {
                     if content.is_array() {
@@ -223,7 +259,13 @@ pub async fn process_chat_sse<S>(
             }
 
             if let Some(message) = choice.get("message") {
-                append_reasoning_from_value(&tx_event, &mut reasoning_item, message).await;
+                append_reasoning_from_value(
+                    &tx_event,
+                    &mut reasoning_item,
+                    message,
+                    provider_profile,
+                )
+                .await;
             }
 
             let finish_reason = choice.get("finish_reason").and_then(Value::as_str);
@@ -238,15 +280,6 @@ pub async fn process_chat_sse<S>(
                     let _ = tx_event
                         .send(Ok(ResponseEvent::OutputItemDone(assistant)))
                         .await;
-                }
-                if !completed_sent {
-                    let _ = tx_event
-                        .send(Ok(ResponseEvent::Completed {
-                            response_id: String::new(),
-                            token_usage: None,
-                        }))
-                        .await;
-                    completed_sent = true;
                 }
                 continue;
             }
@@ -357,15 +390,37 @@ async fn append_reasoning_from_value(
     tx_event: &mpsc::Sender<Result<ResponseEvent, ApiError>>,
     reasoning_item: &mut Option<ResponseItem>,
     value: &Value,
+    provider_profile: Option<&BuiltInProviderProfile>,
 ) {
-    if let Some(reasoning) = value.get("reasoning") {
-        append_reasoning_value(tx_event, reasoning_item, reasoning).await;
-    }
-    if let Some(reasoning_content) = value.get("reasoning_content") {
-        append_reasoning_value(tx_event, reasoning_item, reasoning_content).await;
-    }
-    if let Some(reasoning_details) = value.get("reasoning_details") {
-        append_reasoning_value(tx_event, reasoning_item, reasoning_details).await;
+    let reasoning_format =
+        provider_profile.and_then(|profile| profile.stream_dialect.reasoning_format);
+    match reasoning_format {
+        Some(ChatReasoningFormat::Reasoning) => {
+            if let Some(reasoning) = value.get("reasoning") {
+                append_reasoning_value(tx_event, reasoning_item, reasoning).await;
+            }
+        }
+        Some(ChatReasoningFormat::ReasoningContent) => {
+            if let Some(reasoning_content) = value.get("reasoning_content") {
+                append_reasoning_value(tx_event, reasoning_item, reasoning_content).await;
+            }
+        }
+        Some(ChatReasoningFormat::ReasoningDetails) => {
+            if let Some(reasoning_details) = value.get("reasoning_details") {
+                append_reasoning_value(tx_event, reasoning_item, reasoning_details).await;
+            }
+        }
+        None => {
+            if let Some(reasoning) = value.get("reasoning") {
+                append_reasoning_value(tx_event, reasoning_item, reasoning).await;
+            }
+            if let Some(reasoning_content) = value.get("reasoning_content") {
+                append_reasoning_value(tx_event, reasoning_item, reasoning_content).await;
+            }
+            if let Some(reasoning_details) = value.get("reasoning_details") {
+                append_reasoning_value(tx_event, reasoning_item, reasoning_details).await;
+            }
+        }
     }
 }
 
@@ -404,10 +459,103 @@ fn collect_reasoning_texts(value: &Value, texts: &mut Vec<String>) {
     }
 }
 
+fn parse_chat_usage(
+    value: &Value,
+    provider_profile: Option<&BuiltInProviderProfile>,
+) -> Option<TokenUsage> {
+    let stream_dialect = provider_profile.map(|profile| profile.stream_dialect);
+    let root_usage = stream_dialect
+        .map(|dialect| dialect.parse_root_usage)
+        .unwrap_or(true)
+        .then(|| value.get("usage").and_then(parse_chat_usage_value))
+        .flatten();
+    let choice_usage = stream_dialect
+        .map(|dialect| dialect.parse_choice_usage)
+        .unwrap_or(true)
+        .then(|| {
+            value
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| {
+                    choices
+                        .iter()
+                        .find_map(|choice| choice.get("usage").and_then(parse_chat_usage_value))
+                })
+        })
+        .flatten();
+
+    root_usage.or(choice_usage)
+}
+
+fn parse_chat_usage_value(usage: &Value) -> Option<TokenUsage> {
+    if usage.is_null() {
+        return None;
+    }
+
+    let input_tokens = usage
+        .get("prompt_tokens")
+        .or_else(|| usage.get("input_tokens"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    let cached_input_tokens = usage
+        .pointer("/prompt_tokens_details/cached_tokens")
+        .or_else(|| usage.pointer("/input_tokens_details/cached_tokens"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    let output_tokens = usage
+        .get("completion_tokens")
+        .or_else(|| usage.get("output_tokens"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    let reasoning_output_tokens = usage
+        .pointer("/completion_tokens_details/reasoning_tokens")
+        .or_else(|| usage.pointer("/output_tokens_details/reasoning_tokens"))
+        .or_else(|| usage.get("reasoning_output_tokens"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    let total_tokens = usage
+        .get("total_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or_else(|| input_tokens.saturating_add(output_tokens));
+
+    let has_any_usage_field = usage.get("prompt_tokens").is_some()
+        || usage.get("input_tokens").is_some()
+        || usage
+            .pointer("/prompt_tokens_details/cached_tokens")
+            .is_some()
+        || usage
+            .pointer("/input_tokens_details/cached_tokens")
+            .is_some()
+        || usage.get("completion_tokens").is_some()
+        || usage.get("output_tokens").is_some()
+        || usage
+            .pointer("/completion_tokens_details/reasoning_tokens")
+            .is_some()
+        || usage
+            .pointer("/output_tokens_details/reasoning_tokens")
+            .is_some()
+        || usage.get("reasoning_output_tokens").is_some()
+        || usage.get("total_tokens").is_some();
+
+    if !has_any_usage_field {
+        return None;
+    }
+
+    Some(TokenUsage {
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        reasoning_output_tokens,
+        total_tokens,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+    use codex_protocol::provider_profiles::DEEPSEEK_PROVIDER_ID;
+    use codex_protocol::provider_profiles::built_in_provider_profile;
     use futures::TryStreamExt;
     use serde_json::json;
     use tokio_util::io::ReaderStream;
@@ -421,6 +569,13 @@ mod tests {
     }
 
     async fn collect_events(body: &str) -> Vec<ResponseEvent> {
+        collect_events_with_profile(body, None).await
+    }
+
+    async fn collect_events_with_profile(
+        body: &str,
+        provider_profile: Option<&'static BuiltInProviderProfile>,
+    ) -> Vec<ResponseEvent> {
         let reader = ReaderStream::new(std::io::Cursor::new(body.to_string()))
             .map_err(|err| codex_client::TransportError::Network(err.to_string()));
         let (tx, mut rx) = mpsc::channel::<Result<ResponseEvent, ApiError>>(16);
@@ -429,6 +584,7 @@ mod tests {
             tx,
             Duration::from_millis(1000),
             None,
+            provider_profile,
         ));
 
         let mut output = Vec::new();
@@ -473,6 +629,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn explicit_profile_prefers_provider_reasoning_field() {
+        let delta = json!({
+            "choices": [{
+                "delta": {
+                    "reasoning": "generic",
+                    "reasoning_content": "provider specific",
+                    "content": ""
+                }
+            }]
+        });
+        let finish = json!({
+            "choices": [{
+                "finish_reason": "stop"
+            }]
+        });
+        let body = build_body(&[delta, finish]);
+        let deepseek_profile = built_in_provider_profile(DEEPSEEK_PROVIDER_ID).expect("profile");
+        let events = collect_events_with_profile(&body, Some(deepseek_profile)).await;
+
+        assert_matches!(
+            &events[..],
+            [
+                ResponseEvent::OutputItemAdded(ResponseItem::Reasoning { .. }),
+                ResponseEvent::ReasoningContentDelta { delta, .. },
+                ResponseEvent::OutputItemDone(ResponseItem::Reasoning { .. }),
+                ResponseEvent::Completed { .. }
+            ] if delta == "provider specific"
+        );
+    }
+
+    #[tokio::test]
     async fn parses_reasoning_details_deltas() {
         let delta = json!({
             "choices": [{
@@ -497,6 +684,157 @@ mod tests {
                 ResponseEvent::OutputItemDone(ResponseItem::Reasoning { .. }),
                 ResponseEvent::Completed { .. }
             ] if delta == "step 1"
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_events_forward_usage_to_completed() {
+        let delta = json!({
+            "choices": [{
+                "delta": {
+                    "content": "hello"
+                }
+            }]
+        });
+        let finish = json!({
+            "usage": {
+                "prompt_tokens": 120,
+                "prompt_tokens_details": {
+                    "cached_tokens": 20
+                },
+                "completion_tokens": 30,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 7
+                },
+                "total_tokens": 150
+            },
+            "choices": [{
+                "finish_reason": "stop"
+            }]
+        });
+        let body = build_body(&[delta, finish]);
+        let events = collect_events(&body).await;
+
+        assert_matches!(
+            &events[..],
+            [
+                ResponseEvent::OutputItemAdded(ResponseItem::Message { .. }),
+                ResponseEvent::OutputTextDelta(text),
+                ResponseEvent::OutputItemDone(ResponseItem::Message { .. }),
+                ResponseEvent::Completed { token_usage: Some(usage), .. }
+            ] if text == "hello"
+                && *usage == TokenUsage {
+                    input_tokens: 120,
+                    cached_input_tokens: 20,
+                    output_tokens: 30,
+                    reasoning_output_tokens: 7,
+                    total_tokens: 150,
+                }
+        );
+    }
+
+    #[tokio::test]
+    async fn usage_only_events_are_preserved_until_done() {
+        let events = collect_events(&build_body(&[json!({
+            "usage": {
+                "input_tokens": 80,
+                "output_tokens": 12,
+                "total_tokens": 92
+            }
+        })]))
+        .await;
+
+        assert_matches!(
+            &events[..],
+            [ResponseEvent::Completed { token_usage: Some(usage), .. }]
+            if *usage == TokenUsage {
+                input_tokens: 80,
+                cached_input_tokens: 0,
+                output_tokens: 12,
+                reasoning_output_tokens: 0,
+                total_tokens: 92,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn choice_scoped_usage_is_forwarded_on_stop() {
+        let delta = json!({
+            "choices": [{
+                "delta": {
+                    "content": "OK"
+                }
+            }]
+        });
+        let finish = json!({
+            "choices": [{
+                "finish_reason": "stop",
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 7,
+                    "total_tokens": 19
+                }
+            }]
+        });
+        let body = build_body(&[delta, finish]);
+        let events = collect_events(&body).await;
+
+        assert_matches!(
+            events.last(),
+            Some(ResponseEvent::Completed {
+                token_usage: Some(TokenUsage {
+                    input_tokens: 12,
+                    output_tokens: 7,
+                    total_tokens: 19,
+                    ..
+                }),
+                ..
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn trailing_usage_chunk_after_stop_overrides_null_usage() {
+        let delta = json!({
+            "choices": [{
+                "delta": {
+                    "content": "OK"
+                }
+            }],
+            "usage": null
+        });
+        let finish = json!({
+            "choices": [{
+                "finish_reason": "stop"
+            }],
+            "usage": null
+        });
+        let trailing_usage = json!({
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 46,
+                "completion_tokens": 68,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 66
+                },
+                "total_tokens": 114
+            }
+        });
+        let body = build_body(&[delta, finish, trailing_usage]);
+        let events = collect_events(&body).await;
+
+        assert_matches!(
+            events.last(),
+            Some(ResponseEvent::Completed {
+                token_usage: Some(TokenUsage {
+                    input_tokens: 46,
+                    output_tokens: 68,
+                    reasoning_output_tokens: 66,
+                    total_tokens: 114,
+                    ..
+                }),
+                ..
+            })
         );
     }
 }

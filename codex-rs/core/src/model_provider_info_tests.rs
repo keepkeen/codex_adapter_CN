@@ -121,3 +121,24 @@ supports_websockets = true
     let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
     assert_eq!(provider.websocket_connect_timeout_ms, Some(15_000));
 }
+
+#[test]
+fn known_provider_id_uses_built_in_profile_registry() {
+    let providers = built_in_model_providers(/*openai_base_url*/ None);
+    let deepseek = providers
+        .get(DEEPSEEK_PROVIDER_ID)
+        .expect("deepseek provider should exist");
+    let kimi = providers
+        .get(KIMI_PROVIDER_ID)
+        .expect("kimi provider should exist");
+    let openai = providers
+        .get(OPENAI_PROVIDER_ID)
+        .expect("openai provider should exist");
+    let exact_openai =
+        ModelProviderInfo::create_openai_provider(Some("https://api.openai.com/v1".to_string()));
+
+    assert_eq!(deepseek.known_provider_id(), Some(DEEPSEEK_PROVIDER_ID));
+    assert_eq!(kimi.known_provider_id(), Some(KIMI_PROVIDER_ID));
+    assert_eq!(openai.known_provider_id(), Some(OPENAI_PROVIDER_ID));
+    assert_eq!(exact_openai.known_provider_id(), Some(OPENAI_PROVIDER_ID));
+}

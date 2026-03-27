@@ -10,14 +10,14 @@
 
 ### DotSlash
 
-The GitHub Release also contains a [DotSlash](https://dotslash-cli.com/) file for the Codex CLI named `codex`. Using a DotSlash file makes it possible to make a lightweight commit to source control to ensure all contributors use the same version of an executable, regardless of what platform they use for development.
+The GitHub Release also contains a [DotSlash](https://dotslash-cli.com/) file for the forked CLI named `codex-cn`. Using a DotSlash file makes it possible to make a lightweight commit to source control to ensure all contributors use the same version of an executable, regardless of what platform they use for development.
 
 ### Build from source
 
 ```bash
 # Clone the repository and navigate to the root of the Cargo workspace.
-git clone https://github.com/openai/codex.git
-cd codex/codex-rs
+git clone https://github.com/keepkeen/codex_adapter_CN.git
+cd codex_adapter_CN/codex-rs
 
 # Install the Rust toolchain, if necessary.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -29,11 +29,18 @@ cargo install just
 # Optional: install nextest for the `just test` helper
 cargo install --locked cargo-nextest
 
-# Build Codex.
+# Build the fork. The internal Cargo binary target is still named `codex`.
 cargo build
 
-# Launch the TUI with a sample prompt.
+# For quick local development, you can launch that internal target directly.
 cargo run --bin codex -- "explain this codebase to me"
+
+# For a persistent local install, expose the fork as `codex-cn` and keep it on
+# an isolated home directory so it never collides with an existing upstream
+# `codex` install.
+mkdir -p "$HOME/.local/bin"
+cp target/debug/codex "$HOME/.local/bin/codex-cn"
+CODEX_HOME="$HOME/.codex-cn" CODEX_SQLITE_HOME="$HOME/.codex-cn/sqlite" codex-cn
 
 # After making changes, use the root justfile helpers (they default to codex-rs):
 just fmt
@@ -53,10 +60,10 @@ cargo test --all-features
 
 Codex is written in Rust, so it honors the `RUST_LOG` environment variable to configure its logging behavior.
 
-The TUI defaults to `RUST_LOG=codex_core=info,codex_tui=info,codex_rmcp_client=info` and log messages are written to `~/.codex/log/codex-tui.log` by default. For a single run, you can override the log directory with `-c log_dir=...` (for example, `-c log_dir=./.codex-log`).
+The TUI defaults to `RUST_LOG=codex_core=info,codex_tui=info,codex_rmcp_client=info` and log messages are written to `~/.codex-cn/log/codex-tui.log` by default when you launch the fork as `codex-cn`. For a single run, you can override the log directory with `-c log_dir=...` (for example, `-c log_dir=./.codex-log`).
 
 ```bash
-tail -F ~/.codex/log/codex-tui.log
+tail -F ~/.codex-cn/log/codex-tui.log
 ```
 
 By comparison, the non-interactive mode (`codex exec`) defaults to `RUST_LOG=error`, but messages are printed inline, so there is no need to monitor a separate file.

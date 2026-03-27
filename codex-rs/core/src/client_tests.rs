@@ -2,8 +2,10 @@ use super::AuthRequestTelemetryContext;
 use super::ModelClient;
 use super::PendingUnauthorizedRetry;
 use super::UnauthorizedRecoveryExecution;
+use crate::client_common::Prompt;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
@@ -14,6 +16,23 @@ fn test_model_client(session_source: SessionSource) -> ModelClient {
     let provider = crate::model_provider_info::create_oss_provider_with_base_url(
         "https://example.com/v1",
         crate::model_provider_info::WireApi::Responses,
+    );
+    ModelClient::new(
+        None,
+        ThreadId::new(),
+        provider,
+        session_source,
+        None,
+        false,
+        false,
+        None,
+    )
+}
+
+fn test_generic_chat_model_client(session_source: SessionSource) -> ModelClient {
+    let provider = crate::model_provider_info::create_oss_provider_with_base_url(
+        "https://example.com/v1",
+        crate::model_provider_info::WireApi::Chat,
     );
     ModelClient::new(
         None,
@@ -95,6 +114,46 @@ async fn summarize_memories_returns_empty_for_empty_input() {
         .await
         .expect("empty summarize request should succeed");
     assert_eq!(output.len(), 0);
+}
+
+#[tokio::test]
+async fn generic_chat_providers_reject_output_schema() {
+    let client = test_generic_chat_model_client(SessionSource::Cli);
+    let model_info = test_model_info();
+    let session_telemetry = test_session_telemetry();
+    let mut session = client.new_session();
+    let prompt = Prompt {
+        output_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "answer": { "type": "string" }
+            },
+            "required": ["answer"],
+            "additionalProperties": false
+        })),
+        ..Prompt::default()
+    };
+
+    let err = match session
+        .stream(
+            &prompt,
+            &model_info,
+            &session_telemetry,
+            /*effort*/ None,
+            ReasoningSummaryConfig::None,
+            /*service_tier*/ None,
+            /*turn_metadata_header*/ None,
+        )
+        .await
+    {
+        Ok(_) => panic!("generic chat providers should reject output_schema"),
+        Err(err) => err,
+    };
+
+    assert_eq!(
+        err.to_string(),
+        "unsupported operation: output_schema is not supported for Chat Completions API"
+    );
 }
 
 #[test]

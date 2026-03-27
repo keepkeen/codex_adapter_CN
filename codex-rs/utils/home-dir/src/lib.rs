@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 /// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// `~/.codex` for upstream-style invocations and `~/.codex-cn` when the
+/// process is invoked as `codex-cn`.
 ///
 /// - If `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
@@ -13,10 +14,16 @@ pub fn find_codex_home() -> std::io::Result<PathBuf> {
     let codex_home_env = std::env::var("CODEX_HOME")
         .ok()
         .filter(|val| !val.is_empty());
-    find_codex_home_from_env(codex_home_env.as_deref())
+    find_codex_home_from_env_and_process_name(
+        codex_home_env.as_deref(),
+        current_process_name().as_deref(),
+    )
 }
 
-fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<PathBuf> {
+fn find_codex_home_from_env_and_process_name(
+    codex_home_env: Option<&str>,
+    process_name: Option<&str>,
+) -> std::io::Result<PathBuf> {
     // Honor the `CODEX_HOME` environment variable when it is set to allow users
     // (and tests) to override the default location.
     match codex_home_env {
@@ -54,15 +61,44 @@ fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<Pat
                     "Could not find home directory",
                 )
             })?;
-            p.push(".codex");
+            p.push(default_codex_home_dir_name(process_name));
             Ok(p)
         }
     }
 }
 
+fn current_process_name() -> Option<String> {
+    std::env::args_os()
+        .next()
+        .and_then(process_name_from_arg0)
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+            })
+        })
+}
+
+fn process_name_from_arg0(arg0: std::ffi::OsString) -> Option<String> {
+    std::path::Path::new(&arg0)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
+fn default_codex_home_dir_name(process_name: Option<&str>) -> &'static str {
+    match process_name
+        .and_then(|name| std::path::Path::new(name).file_stem())
+        .and_then(|stem| stem.to_str())
+    {
+        Some("codex-cn") => ".codex-cn",
+        _ => ".codex",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::find_codex_home_from_env;
+    use super::default_codex_home_dir_name;
+    use super::find_codex_home_from_env_and_process_name;
     use dirs::home_dir;
     use pretty_assertions::assert_eq;
     use std::fs;
@@ -77,7 +113,8 @@ mod tests {
             .to_str()
             .expect("missing codex home path should be valid utf-8");
 
-        let err = find_codex_home_from_env(Some(missing_str)).expect_err("missing CODEX_HOME");
+        let err = find_codex_home_from_env_and_process_name(Some(missing_str), None)
+            .expect_err("missing CODEX_HOME");
         assert_eq!(err.kind(), ErrorKind::NotFound);
         assert!(
             err.to_string().contains("CODEX_HOME"),
@@ -94,7 +131,8 @@ mod tests {
             .to_str()
             .expect("file codex home path should be valid utf-8");
 
-        let err = find_codex_home_from_env(Some(file_str)).expect_err("file CODEX_HOME");
+        let err = find_codex_home_from_env_and_process_name(Some(file_str), None)
+            .expect_err("file CODEX_HOME");
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert!(
             err.to_string().contains("not a directory"),
@@ -110,7 +148,8 @@ mod tests {
             .to_str()
             .expect("temp codex home path should be valid utf-8");
 
-        let resolved = find_codex_home_from_env(Some(temp_str)).expect("valid CODEX_HOME");
+        let resolved = find_codex_home_from_env_and_process_name(Some(temp_str), None)
+            .expect("valid CODEX_HOME");
         let expected = temp_home
             .path()
             .canonicalize()
@@ -120,9 +159,43 @@ mod tests {
 
     #[test]
     fn find_codex_home_without_env_uses_default_home_dir() {
-        let resolved = find_codex_home_from_env(None).expect("default CODEX_HOME");
+        let resolved =
+            find_codex_home_from_env_and_process_name(None, None).expect("default CODEX_HOME");
         let mut expected = home_dir().expect("home dir");
         expected.push(".codex");
         assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn find_codex_home_without_env_uses_default_home_dir_for_upstream_name() {
+        let resolved = find_codex_home_from_env_and_process_name(None, Some("codex"))
+            .expect("default CODEX_HOME");
+        let mut expected = home_dir().expect("home dir");
+        expected.push(".codex");
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn find_codex_home_without_env_uses_codex_cn_home_dir_for_codex_cn_name() {
+        let resolved = find_codex_home_from_env_and_process_name(None, Some("codex-cn"))
+            .expect("default CODEX_HOME");
+        let mut expected = home_dir().expect("home dir");
+        expected.push(".codex-cn");
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn codex_cn_detection_accepts_windows_executable_name() {
+        assert_eq!(
+            default_codex_home_dir_name(Some("codex-cn.exe")),
+            ".codex-cn"
+        );
+    }
+
+    #[test]
+    fn non_codex_cn_process_name_keeps_upstream_home_dir() {
+        assert_eq!(default_codex_home_dir_name(Some("codex")), ".codex");
+        assert_eq!(default_codex_home_dir_name(Some("cargo")), ".codex");
+        assert_eq!(default_codex_home_dir_name(None), ".codex");
     }
 }

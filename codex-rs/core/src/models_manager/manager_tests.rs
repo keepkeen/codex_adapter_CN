@@ -4,6 +4,7 @@ use crate::auth::AuthCredentialsStoreMode;
 use crate::config::ConfigBuilder;
 use crate::model_provider_info::DEEPSEEK_PROVIDER_ID;
 use crate::model_provider_info::KIMI_PROVIDER_ID;
+use crate::model_provider_info::MINIMAX_PROVIDER_ID;
 use crate::model_provider_info::WireApi;
 use crate::model_provider_info::built_in_model_providers;
 use base64::Engine as _;
@@ -263,7 +264,7 @@ async fn deepseek_legacy_thinking_alias_uses_reasoner_metadata() {
 }
 
 #[tokio::test]
-async fn kimi_provider_marks_built_in_model_as_multimodal() {
+async fn kimi_provider_exposes_k25_catalog() {
     let codex_home = tempdir().expect("temp dir");
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("Test API Key"));
     let mut providers = built_in_model_providers(/*openai_base_url*/ None);
@@ -279,16 +280,89 @@ async fn kimi_provider_marks_built_in_model_as_multimodal() {
         provider,
     );
 
-    let model = manager
-        .get_remote_models()
-        .await
-        .into_iter()
-        .find(|model| model.slug == "kimi-latest")
-        .expect("kimi-latest should exist");
-    assert!(model.supports_image_detail_original);
+    let models = manager.get_remote_models().await;
     assert_eq!(
-        model.input_modalities,
+        models
+            .iter()
+            .map(|model| model.slug.as_str())
+            .collect::<Vec<_>>(),
+        vec!["kimi-k2.5"]
+    );
+
+    let k25 = models
+        .iter()
+        .find(|model| model.slug == "kimi-k2.5")
+        .expect("kimi-k2.5 should exist");
+    assert_eq!(k25.context_window, Some(262_144));
+    assert_eq!(
+        k25.input_modalities,
         vec![InputModality::Text, InputModality::Image]
+    );
+    assert!(k25.supports_image_detail_original);
+}
+
+#[tokio::test]
+async fn kimi_legacy_namespaced_alias_uses_k25_metadata() {
+    let codex_home = tempdir().expect("temp dir");
+    let config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await
+        .expect("load default test config");
+    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("Test API Key"));
+    let mut providers = built_in_model_providers(/*openai_base_url*/ None);
+    let provider = providers
+        .remove(KIMI_PROVIDER_ID)
+        .expect("kimi provider should exist");
+    let manager = ModelsManager::new_with_provider(
+        codex_home.path().to_path_buf(),
+        auth_manager,
+        /*model_catalog*/ None,
+        CollaborationModesConfig::default(),
+        Some(KIMI_PROVIDER_ID.to_string()),
+        provider,
+    );
+
+    let model_info = manager.get_model_info("moonshot/kimi-k2.5", &config).await;
+
+    assert_eq!(model_info.slug, "moonshot/kimi-k2.5");
+    assert_eq!(model_info.display_name, "Kimi K2.5");
+    assert!(!model_info.used_fallback_model_metadata);
+    assert_eq!(
+        model_info.input_modalities,
+        vec![InputModality::Text, InputModality::Image]
+    );
+}
+
+#[tokio::test]
+async fn minimax_provider_uses_current_m27_catalog() {
+    let codex_home = tempdir().expect("temp dir");
+    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("Test API Key"));
+    let mut providers = built_in_model_providers(/*openai_base_url*/ None);
+    let provider = providers
+        .remove(MINIMAX_PROVIDER_ID)
+        .expect("minimax provider should exist");
+    let manager = ModelsManager::new_with_provider(
+        codex_home.path().to_path_buf(),
+        auth_manager,
+        /*model_catalog*/ None,
+        CollaborationModesConfig::default(),
+        Some(MINIMAX_PROVIDER_ID.to_string()),
+        provider,
+    );
+
+    let models = manager.get_remote_models().await;
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.slug.as_str())
+            .collect::<Vec<_>>(),
+        vec!["MiniMax-M2.7", "MiniMax-M2.7-highspeed"]
+    );
+    assert!(
+        models
+            .iter()
+            .all(|model| model.context_window == Some(204_800))
     );
 }
 

@@ -848,6 +848,12 @@ fn build_columns(entries: Vec<Line<'static>>) -> Vec<Line<'static>> {
 pub(crate) fn context_window_line(percent: Option<i64>, used_tokens: Option<i64>) -> Line<'static> {
     if let Some(percent) = percent {
         let percent = percent.clamp(0, 100);
+        if let Some(tokens) = used_tokens {
+            let used_fmt = format_tokens_compact(tokens);
+            return Line::from(vec![
+                Span::from(format!("{percent}% context left · {used_fmt} used")).dim(),
+            ]);
+        }
         return Line::from(vec![Span::from(format!("{percent}% context left")).dim()]);
     }
 
@@ -1414,6 +1420,24 @@ mod tests {
                 quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: Some(123_456),
+                status_line_value: None,
+                status_line_enabled: false,
+                active_agent_label: None,
+            },
+        );
+
+        snapshot_footer(
+            "footer_context_percent_with_used_tokens",
+            FooterProps {
+                mode: FooterMode::ComposerEmpty,
+                esc_backtrack_hint: false,
+                use_shift_enter_hint: false,
+                is_task_running: false,
+                collaboration_modes_enabled: false,
+                is_wsl: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
+                context_window_percent: Some(100),
+                context_window_used_tokens: Some(9_876),
                 status_line_value: None,
                 status_line_enabled: false,
                 active_agent_label: None,

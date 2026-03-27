@@ -2403,7 +2403,7 @@ impl ChatWidget {
 
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
         let percent = self.context_remaining_percent(&info);
-        let used_tokens = self.context_used_tokens(&info, percent.is_some());
+        let used_tokens = self.context_used_tokens(&info, percent);
         self.bottom_pane.set_context_window(percent, used_tokens);
         self.token_info = Some(info);
     }
@@ -2415,12 +2415,15 @@ impl ChatWidget {
         })
     }
 
-    fn context_used_tokens(&self, info: &TokenUsageInfo, percent_known: bool) -> Option<i64> {
-        if percent_known {
-            return None;
+    fn context_used_tokens(&self, info: &TokenUsageInfo, percent: Option<i64>) -> Option<i64> {
+        match percent {
+            Some(100) => {
+                let tokens = info.last_token_usage.tokens_in_context_window();
+                (tokens > 0).then_some(tokens)
+            }
+            Some(_) => None,
+            None => Some(info.total_token_usage.tokens_in_context_window()),
         }
-
-        Some(info.total_token_usage.tokens_in_context_window())
     }
 
     #[cfg(test)]
@@ -9672,7 +9675,7 @@ impl ChatWidget {
 
     fn rename_confirmation_cell(name: &str, thread_id: Option<ThreadId>) -> PlainHistoryCell {
         let resume_cmd = codex_core::util::resume_command(Some(name), thread_id)
-            .unwrap_or_else(|| format!("codex resume {name}"));
+            .unwrap_or_else(|| format!("{} resume {name}", codex_core::util::current_cli_name()));
         let name = name.to_string();
         let line = vec![
             "• ".into(),

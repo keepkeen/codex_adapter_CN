@@ -519,7 +519,9 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         } else {
             line![
                 "See ",
-                "https://github.com/openai/codex".cyan().underlined(),
+                "https://github.com/keepkeen/codex_adapter_CN"
+                    .cyan()
+                    .underlined(),
                 " for installation options."
             ]
         };
@@ -534,7 +536,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
             update_instruction,
             "",
             "See full release notes:",
-            "https://github.com/openai/codex/releases/latest"
+            "https://github.com/keepkeen/codex_adapter_CN/releases/latest"
                 .cyan()
                 .underlined(),
         ];

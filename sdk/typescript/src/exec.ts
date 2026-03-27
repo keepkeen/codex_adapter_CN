@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { createRequire } from "node:module";
@@ -41,15 +42,15 @@ export type CodexExecArgs = {
 
 const INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 const TYPESCRIPT_SDK_ORIGINATOR = "codex_sdk_ts";
-const CODEX_NPM_NAME = "@openai/codex";
+const CODEX_NPM_NAME = "@keepkeen/codex-cn";
 
 const PLATFORM_PACKAGE_BY_TARGET: Record<string, string> = {
-  "x86_64-unknown-linux-musl": "@openai/codex-linux-x64",
-  "aarch64-unknown-linux-musl": "@openai/codex-linux-arm64",
-  "x86_64-apple-darwin": "@openai/codex-darwin-x64",
-  "aarch64-apple-darwin": "@openai/codex-darwin-arm64",
-  "x86_64-pc-windows-msvc": "@openai/codex-win32-x64",
-  "aarch64-pc-windows-msvc": "@openai/codex-win32-arm64",
+  "x86_64-unknown-linux-musl": "@keepkeen/codex-cn-linux-x64",
+  "aarch64-unknown-linux-musl": "@keepkeen/codex-cn-linux-arm64",
+  "x86_64-apple-darwin": "@keepkeen/codex-cn-darwin-x64",
+  "aarch64-apple-darwin": "@keepkeen/codex-cn-darwin-arm64",
+  "x86_64-pc-windows-msvc": "@keepkeen/codex-cn-win32-x64",
+  "aarch64-pc-windows-msvc": "@keepkeen/codex-cn-win32-arm64",
 };
 
 const moduleRequire = createRequire(import.meta.url);
@@ -157,6 +158,12 @@ export class CodexExec {
     if (!env[INTERNAL_ORIGINATOR_ENV]) {
       env[INTERNAL_ORIGINATOR_ENV] = TYPESCRIPT_SDK_ORIGINATOR;
     }
+    if (!env.CODEX_HOME) {
+      env.CODEX_HOME = path.join(os.homedir(), ".codex-cn");
+    }
+    if (!env.CODEX_SQLITE_HOME) {
+      env.CODEX_SQLITE_HOME = path.join(env.CODEX_HOME, "sqlite");
+    }
     if (args.apiKey) {
       env.CODEX_API_KEY = args.apiKey;
     }
@@ -164,6 +171,7 @@ export class CodexExec {
     const child = spawn(this.executablePath, commandArgs, {
       env,
       signal: args.signal,
+      argv0: process.platform === "win32" ? "codex-cn.exe" : "codex-cn",
     });
 
     let spawnError: unknown | null = null;
@@ -212,7 +220,7 @@ export class CodexExec {
       if (code !== 0 || signal) {
         const stderrBuffer = Buffer.concat(stderrChunks);
         const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
-        throw new Error(`Codex Exec exited with ${detail}: ${stderrBuffer.toString("utf8")}`);
+        throw new Error(`codex-cn exec exited with ${detail}: ${stderrBuffer.toString("utf8")}`);
       }
     } finally {
       rl.close();
@@ -377,7 +385,7 @@ function findCodexPath() {
     vendorRoot = path.join(path.dirname(platformPackageJsonPath), "vendor");
   } catch {
     throw new Error(
-      `Unable to locate Codex CLI binaries. Ensure ${CODEX_NPM_NAME} is installed with optional dependencies.`,
+      `Unable to locate codex-cn CLI binaries. Ensure ${CODEX_NPM_NAME} is installed with optional dependencies.`,
     );
   }
 

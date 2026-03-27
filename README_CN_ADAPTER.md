@@ -1,62 +1,94 @@
-# Codex 中国模型适配说明
+# codex-cn 中国模型适配说明
 
-这个分支把 Codex 对 DeepSeek、GLM、Kimi、MiniMax 的接入改成了官方更稳的 `chat/completions` 兼容路线，而不是把这些 provider 伪装成 OpenAI Responses API。
+`codex-cn` 是这个 fork 的外部命令名。它保留了 Codex CLI 的核心工作流，但把面向中国模型的接入方式改成了更稳定的 `chat/completions` 兼容层，并补齐了搜索、token 计数、compact、skills、MCP 和子代理这几条主路径。
 
-截至 2026-03-25，代码里内置了以下 provider：
+## 对外发布名
 
-- `deepseek`
-- `glm`
-- `kimi`
-- `minimax`
+- CLI 命令名：`codex-cn`
+- npm 包：`@keepkeen/codex-cn`
+- TypeScript SDK：`@keepkeen/codex-cn-sdk`
+- Responses API proxy：`@keepkeen/codex-cn-responses-api-proxy`
 
-## 这次改了什么
+Rust workspace 里的内部二进制目标名仍然是 `codex`。这是为了减少对 upstream 构建图的侵入式修改。对外安装、命令、文档和 release 资产全部统一成 `codex-cn`。
 
-- 增加了 4 家中国 provider 的内置接入，不需要用户自己手写 provider 配置。
-- 把原先不可靠的 Responses API 假设改成了 `chat/completions` 兼容层。
-- 为工具调用、对话历史、reasoning 内容、流式 SSE 事件做了 provider 兼容转换。
-- 修复了 `ThreadManager` 生产路径里错误使用 OpenAI 模型目录的问题，保证不同 provider 会载入各自的模型元数据。
-- 删除了旧的 `chinese_models.json` 和重复/过期文档，改成 provider 独立模型目录。
+## 这个 fork 改了什么
 
-## 与原仓库不同的点
+- 外部命令名按 `codex-cn` 来使用，不再要求你把它当成原版 `codex`。
+- 内置了 4 家 provider：
+  - `deepseek`
+  - `glm`
+  - `kimi`
+  - `minimax`
+- 内置模型按当前代码库的模型目录维护：
+  - DeepSeek: `deepseek-chat`, `deepseek-reasoner`
+  - GLM: `glm-5`, `glm-4.6v`
+  - Kimi: `kimi-k2.5`
+  - MiniMax: `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`
+- 请求和流式响应都走 provider profile，不再散落在多处 `if provider == ...` 分支里。
+- chat provider 的 token usage 会优先吃厂商流式 `usage`，拿不到时回退到本地估算，所以 footer 和 auto compact 仍然会动。
+- `web_search="live"` / `--search` 已改成本地 function adapter，不是 OpenAI 原生 Responses `web_search`。
+- `js_repl` 和 `output_schema` 在四家内置 chat provider 下已做成 provider-aware 兼容层，不再一刀切禁用。
 
-- 上游仓库的默认主路径是 OpenAI / ChatGPT 登录，以及 OpenAI 自己的 `responses` 能力；这个分支额外内置了 `deepseek`、`glm`、`kimi`、`minimax` 4 个 provider。
-- 这 4 家 provider 不再伪装成 OpenAI Responses API，而是统一走官方更稳定的 `chat/completions` 兼容层和 HTTP SSE 流式返回。
-- 非 OpenAI provider 的 compact 不走 OpenAI 远端 compact task，而是继续使用本地 compact 路径。
-- 模型目录和元数据改成按当前 provider 单独加载，避免中国 provider 误回退到 OpenAI 内置模型元数据。
-- 额外做了向后兼容：
-  - DeepSeek 旧别名 `deepseek-chat-thinking` / `deepseek-thinking`
-  - Kimi 旧环境变量 `KIMI_API_KEY`
+## 当前适配状态
 
-## 适配原理
+### 已稳定可用
 
-- 统一把 Codex 内部消息和工具调用重编码成 OpenAI 兼容 `chat/completions` 请求。
-- 对不同 provider 的 reasoning 字段做兼容：
-  - DeepSeek / Kimi：保留 `reasoning_content`
-  - MiniMax：自动加 `reasoning_split=true` 并保留 `reasoning_details`
-- SSE 解析层按 chat-completions 流式格式接收 delta、tool call 和 reasoning 内容。
-- 模型目录按 provider 独立加载，避免 DeepSeek / GLM / Kimi / MiniMax 的模型错误回退到 OpenAI 默认元数据。
-- 向后兼容旧配置：
-  - `deepseek-chat-thinking`
-  - `deepseek-thinking`
-  - `KIMI_API_KEY`
+- 基础对话
+- shell / apply_patch 类常规工具调用
+- `skills`
+- `MCP`
+- 子代理
+- `auto compact`
+- `manual /compact` 的 PTY/TUI smoke 路径
+- `web_search="live"` 的本地搜索适配层
+- `js_repl`
+- `output_schema`
 
-## 内置模型
+### 分模型说明
 
-- DeepSeek: `deepseek-chat`, `deepseek-reasoner`
-- GLM: `glm-5`, `glm-4.6v`
-- Kimi: `kimi-latest`
-- MiniMax: `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`
+- `deepseek-chat`
+  - 文本模型
+  - 支持基本对话、工具调用、skills、MCP、子代理、搜索、compact
+- `deepseek-reasoner`
+  - 文本模型
+  - 适合需要 reasoning 的场景
+- `glm-5`
+  - 文本模型
+  - 支持基本对话、工具调用、skills、MCP、子代理、搜索、compact
+- `glm-4.6v`
+  - 图像输入模型
+  - 适合带截图、界面图、示意图的场景
+- `kimi-k2.5`
+  - 图像输入模型
+  - 适合多模态任务和代码工作流
+- `MiniMax-M2.7`
+  - 文本模型
+  - 适合常规编码与 agent workflow
+- `MiniMax-M2.7-highspeed`
+  - 文本模型
+  - 与 `MiniMax-M2.7` 保持同一适配策略
+
+## 重要限制
+
+- 这 4 家 provider 都走 HTTP SSE，不走 websocket 预热。
+- 当前仍不是 OpenAI 原生 Responses 路径的完整等价实现。
+- `web_search` 现在是本地搜索适配层，支持 `search`、`open_page`、`find_in_page`，但不等价于 OpenAI 原生 `web_search`。
+- `output_schema`、`js_repl` 虽然已经可用，但属于兼容实现，不是厂商原生协议直通。
+- `artifacts`、`image_generation` 目前仍不是这 4 家 provider 的已支持路径。
+- `image_input` 只对 `glm-4.6v` 和 `kimi-k2.5` 是原生可用。
+- 当 provider 没返回精确 usage 时，token 计数和 auto compact 依赖本地估算。
+- `MiniMax` 的 cached token 解析已做，但 footer 不会把它单独拆成独立显示项。
 
 ## 如何使用
 
-最小配置：
+最小配置示例：
 
 ```toml
 model_provider = "deepseek"
 model = "deepseek-chat"
 ```
 
-其他常用组合：
+常见组合：
 
 ```toml
 model_provider = "deepseek"
@@ -70,7 +102,7 @@ model = "glm-5"
 
 ```toml
 model_provider = "kimi"
-model = "kimi-latest"
+model = "kimi-k2.5"
 ```
 
 ```toml
@@ -87,48 +119,109 @@ export MOONSHOT_API_KEY="..."
 export MINIMAX_API_KEY="..."
 ```
 
-## 兼容性说明
+联网搜索：
 
-- Kimi 除了 `MOONSHOT_API_KEY`，也兼容旧环境变量 `KIMI_API_KEY`。
-- DeepSeek 旧模型别名 `deepseek-chat-thinking` / `deepseek-thinking` 会自动映射到新的 thinking 路径。
-- 如果需要代理、自定义 header 或网关，不要覆盖保留的内置 provider ID；请新建一个自定义 provider ID，并把 `wire_api` 设成 `chat`。
+```bash
+codex-cn --search
+```
 
-## Prompt / Agent 工作流是否通用
+或者在配置里开启：
 
-- 结论：大多数核心 prompt 是通用的，不需要专门为这 4 家 provider 重写。
-- 已检查的模板包括：
-  - `orchestrator`
-  - `collaboration_mode`
-  - `compact`
-  - `memories`
-- 这些模板本质上描述的是协作方式、上下文压缩、记忆整理、工具调用纪律，并不依赖 OpenAI 专有措辞才能工作。
-- 真正的兼容边界主要不在 prompt，而在工具协议层：
-  - 当前 `chat/completions` 兼容层只完整暴露 function tools
-  - 所以子代理、MCP、绝大多数 skills、记忆压缩/记忆 consolidation 这类 function-tool 工作流基本可用
-  - 但 `js_repl`、artifact 类状态型工具、模型侧 `web_search`、`image_generation` 这类非 function / 特殊 built-in tool 还不是完全等价路径
-- 这意味着：prompt 文本本身大体通用，但如果某个 workflow 强依赖 freeform 或状态型 built-in tool，它在这 4 家 provider 下仍可能受限。
+```toml
+web_search = "live"
+```
 
-## 哪些模型哪些功能不能用
+图像输入：
 
-- 所有这 4 家 provider：
-  - 都走 HTTP SSE，不走 websocket 预热
-  - 当前都不支持 `output_schema` 这条 chat-completions 兼容路径
-  - 当前都不启用并行 tool calls
-  - `js_repl`、artifact 类工具、模型侧 `web_search` / `image_generation` 还不是和 OpenAI 原生路径完全等价
-- 仅支持文本输入：
-  - `deepseek-chat`
-  - `deepseek-reasoner`
-  - `glm-5`
-  - `MiniMax-M2.7`
-  - `MiniMax-M2.7-highspeed`
-- 支持图像输入：
-  - `glm-4.6v`
-  - `kimi-latest`
+```bash
+codex-cn -i ./screen.png
+```
 
-## 建议
+或者在程序化调用里传图片输入项。当前只有 `glm-4.6v` 和 `kimi-k2.5` 真正支持图像输入。
 
-- 纯文本编码/Agent 工作流：优先 `deepseek-chat`、`deepseek-reasoner`、`glm-5`、`MiniMax-M2.7`
-- 需要图像理解：优先 `glm-4.6v` 或 `kimi-latest`
-- 需要代理或企业网关：新建自定义 provider，保留内置 provider 作为官方默认配置
+## 如何避免污染原来的 `codex`
 
-更完整的配置说明见 [docs/chinese-ai-providers.md](docs/chinese-ai-providers.md)。
+不要让 `codex-cn` 和上游 `codex` 共用命令、配置和数据库。
+
+推荐这样隔离：
+
+```bash
+alias codex-cn='/path/to/codex-cn'
+export CODEX_HOME="$HOME/.codex-cn"
+export CODEX_SQLITE_HOME="$CODEX_HOME/sqlite"
+```
+
+这样这套 fork 只会读写自己的配置和会话数据库，不会碰到你原来的 `~/.codex`。
+
+现在这套 fork 在两种场景下会默认走 `~/.codex-cn`：
+
+- 通过 npm 安装并运行 `codex-cn`
+- 直接运行重命名后的 `codex-cn` 原生二进制
+
+如果你是从源码直接执行内部二进制 `codex`，仍建议显式设置上面的两个环境变量。
+
+一个稳妥的本地安装方式是：
+
+```bash
+cd codex-rs
+cargo build --release -p codex-cli
+mkdir -p "$HOME/.local/bin"
+cp target/release/codex "$HOME/.local/bin/codex-cn"
+CODEX_HOME="$HOME/.codex-cn" CODEX_SQLITE_HOME="$HOME/.codex-cn/sqlite" codex-cn
+```
+
+## 测试结果
+
+当前仓库已经把中国 provider 的能力收敛进统一的 live matrix，并补了 PTY/TUI smoke。已覆盖的自动化面包括：
+
+- `basic-shell`
+- `web-search`
+- `skill`
+- `mcp-echo`
+- `subagent`
+- `js-repl`
+- `output-schema`
+- `auto-compact`
+- `image-input`
+- `manual-compact-legacy`
+- `manual-compact-app-server`
+
+本地没有注入 provider key 时，这些测试会自动 skip；有真实 key 时可以直接按 [docs/chinese-ai-providers.md](./docs/chinese-ai-providers.md) 里的命令跑。
+
+和这轮适配直接相关的定向验证已通过：
+
+- `cargo test -p codex-protocol --lib`
+- `cargo test -p codex-api --lib`
+- `cargo test -p codex-core --lib`
+- `cargo test -p core_test_support provider_live --lib`
+- `cargo test -p core_test_support provider_live_tui --lib`
+
+另外，和 fork 对外发布/命名直接相关的验证也已跑过：
+
+- `cargo test -p codex-utils-home-dir`
+- `cargo test -p codex-cli`
+- `cargo test -p codex-tui`
+- `cargo test -p codex-tui-app-server`
+- `just argument-comment-lint -p codex-core`
+- `just argument-comment-lint -p codex-cli`
+- `just argument-comment-lint -p codex-tui`
+- `just argument-comment-lint -p codex-tui-app-server`
+- `just argument-comment-lint -p codex-utils-home-dir`
+- `npm pack --dry-run`:
+  - `codex-cli`
+  - `sdk/typescript`
+  - `codex-rs/responses-api-proxy/npm`
+
+当前仍有一个和代码无关的外部发布阻塞：
+
+- `npm whoami --registry=https://registry.npmjs.org/` 返回 `ENEEDAUTH`
+- 这台机器目前无法直接把 `@keepkeen/*` 包发布到 npm，需要先登录 npm 或使用已配置好的 trusted publishing 流程
+
+## 补充说明
+
+- DeepSeek 旧别名 `deepseek-chat-thinking` / `deepseek-thinking` 仍兼容。
+- Kimi 仍兼容旧环境变量 `KIMI_API_KEY`，但官方主变量是 `MOONSHOT_API_KEY`。
+- 如果你要走代理、网关或自定义 header，不要覆盖内置 provider ID，应该新建一个自定义 provider。
+- SDK 仍然保留 `Codex` 这个 TypeScript 类名以兼容现有 API；对外包名和 CLI 名已经统一改成 `codex-cn`。
+
+更完整的 provider、测试和工作流说明见 [docs/chinese-ai-providers.md](./docs/chinese-ai-providers.md)。

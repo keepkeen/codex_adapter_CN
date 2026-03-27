@@ -1088,6 +1088,16 @@ async fn recompute_token_usage_uses_session_base_instructions() {
         .last_token_usage
         .total_tokens;
     assert_eq!(actual_tokens, expected_tokens.max(0));
+
+    let total_usage_tokens = session
+        .state
+        .lock()
+        .await
+        .token_info()
+        .expect("token info")
+        .total_token_usage
+        .total_tokens;
+    assert_eq!(total_usage_tokens, expected_tokens.max(0));
 }
 
 #[tokio::test]
@@ -1110,6 +1120,78 @@ async fn recompute_token_usage_updates_model_context_window() {
 
     let actual = session.state.lock().await.token_info().expect("token info");
     assert_eq!(actual.model_context_window, Some(128_000));
+}
+
+#[tokio::test]
+async fn update_token_usage_info_without_provider_usage_recomputes_and_emits_token_count() {
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+
+    let item = user_message(&"hello from DeepSeek ".repeat(60));
+    session
+        .record_into_history(std::slice::from_ref(&item), &turn_context)
+        .await;
+
+    let history = session.clone_history().await;
+    let expected_tokens = history
+        .estimate_token_count_with_base_instructions(&session.get_base_instructions().await)
+        .expect("estimate token count")
+        .max(0);
+
+    session
+        .update_token_usage_info(turn_context.as_ref(), None)
+        .await;
+
+    let event = tokio::time::timeout(StdDuration::from_secs(1), rx.recv())
+        .await
+        .expect("token count event timed out")
+        .expect("token count event missing");
+    let EventMsg::TokenCount(TokenCountEvent {
+        info: Some(info),
+        rate_limits: None,
+    }) = event.msg
+    else {
+        panic!("expected token count event with info");
+    };
+
+    assert_eq!(info.last_token_usage.total_tokens, expected_tokens);
+    assert_eq!(info.total_token_usage.total_tokens, expected_tokens);
+    assert_eq!(session.get_total_token_usage().await, expected_tokens);
+}
+
+#[tokio::test]
+async fn recompute_token_usage_grows_total_usage_after_history_expands() {
+    let (session, turn_context) = make_session_and_context().await;
+
+    let first_item = user_message(&"first turn tokens ".repeat(40));
+    session
+        .record_into_history(std::slice::from_ref(&first_item), &turn_context)
+        .await;
+    session.recompute_token_usage(&turn_context).await;
+
+    let first_info = session
+        .state
+        .lock()
+        .await
+        .token_info()
+        .expect("first token info");
+
+    let second_item = user_message(&"second turn tokens ".repeat(40));
+    session
+        .record_into_history(std::slice::from_ref(&second_item), &turn_context)
+        .await;
+    session.recompute_token_usage(&turn_context).await;
+
+    let second_info = session
+        .state
+        .lock()
+        .await
+        .token_info()
+        .expect("second token info");
+
+    assert!(second_info.last_token_usage.total_tokens > first_info.last_token_usage.total_tokens);
+    assert!(
+        second_info.total_token_usage.total_tokens >= second_info.last_token_usage.total_tokens
+    );
 }
 
 #[tokio::test]

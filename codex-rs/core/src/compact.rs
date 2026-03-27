@@ -72,6 +72,10 @@ pub(crate) async fn run_compact_task(
     turn_context: Arc<TurnContext>,
     input: Vec<UserInput>,
 ) -> CodexResult<()> {
+    // Resumed TUI threads advertise a precomputed rollout path before the file is
+    // materialized. Manual `/compact` mutates conversation history, so ensure the
+    // resumed session has a concrete rollout file before we persist compaction items.
+    sess.ensure_rollout_materialized().await;
     let start_event = EventMsg::TurnStarted(TurnStartedEvent {
         turn_id: turn_context.sub_id.clone(),
         model_context_window: turn_context.model_context_window(),

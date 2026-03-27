@@ -41,7 +41,7 @@ function Get-ReleaseUrl {
         [string]$ResolvedVersion
     )
 
-    return "https://github.com/openai/codex/releases/download/rust-v$ResolvedVersion/$AssetName"
+    return "https://github.com/keepkeen/codex_adapter_CN/releases/download/rust-v$ResolvedVersion/$AssetName"
 }
 
 function Path-Contains {
@@ -70,9 +70,9 @@ function Resolve-Version {
         return $normalizedVersion
     }
 
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/openai/codex/releases/latest"
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/keepkeen/codex_adapter_CN/releases/latest"
     if (-not $release.tag_name) {
-        Write-Error "Failed to resolve the latest Codex release version."
+        Write-Error "Failed to resolve the latest codex-cn release version."
         exit 1
     }
 
@@ -85,7 +85,7 @@ if ($env:OS -ne "Windows_NT") {
 }
 
 if (-not [Environment]::Is64BitOperatingSystem) {
-    Write-Error "Codex requires a 64-bit version of Windows."
+    Write-Error "codex-cn requires a 64-bit version of Windows."
     exit 1
 }
 
@@ -111,22 +111,23 @@ switch ($architecture) {
 }
 
 if ([string]::IsNullOrWhiteSpace($env:CODEX_INSTALL_DIR)) {
-    $installDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"
+    $installDir = Join-Path $env:LOCALAPPDATA "Programs\keepkeen\codex-cn\bin"
 } else {
     $installDir = $env:CODEX_INSTALL_DIR
 }
 
-$codexPath = Join-Path $installDir "codex.exe"
+$cliName = "codex-cn"
+$codexPath = Join-Path $installDir "$cliName.exe"
 $installMode = if (Test-Path $codexPath) { "Updating" } else { "Installing" }
 
-Write-Step "$installMode Codex CLI"
+Write-Step "$installMode codex-cn CLI"
 Write-Step "Detected platform: $platformLabel"
 
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
 $resolvedVersion = Resolve-Version
 Write-Step "Resolved version: $resolvedVersion"
-$packageAsset = "codex-npm-$npmTag-$resolvedVersion.tgz"
+$packageAsset = "codex-cn-npm-$npmTag-$resolvedVersion.tgz"
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-install-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -136,7 +137,7 @@ try {
     $extractDir = Join-Path $tempDir "extract"
     $url = Get-ReleaseUrl -AssetName $packageAsset -ResolvedVersion $resolvedVersion
 
-    Write-Step "Downloading Codex CLI"
+    Write-Step "Downloading codex-cn CLI"
     Invoke-WebRequest -Uri $url -OutFile $archivePath
 
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
@@ -145,7 +146,7 @@ try {
     $vendorRoot = Join-Path $extractDir "package/vendor/$target"
     Write-Step "Installing to $installDir"
     $copyMap = @{
-        "codex/codex.exe" = "codex.exe"
+        "codex/codex.exe" = "$cliName.exe"
         "codex/codex-command-runner.exe" = "codex-command-runner.exe"
         "codex/codex-windows-sandbox-setup.exe" = "codex-windows-sandbox-setup.exe"
         "path/rg.exe" = "rg.exe"
@@ -187,10 +188,10 @@ if (-not (Path-Contains -PathValue $userPath -Entry $installDir)) {
 }
 
 if ($pathNeedsNewShell) {
-    Write-Step ('Run now: $env:Path = "{0};$env:Path"; codex' -f $installDir)
-    Write-Step "Or open a new PowerShell window and run: codex"
+    Write-Step ('Run now: $env:Path = "{0};$env:Path"; {1}' -f $installDir, $cliName)
+    Write-Step "Or open a new PowerShell window and run: $cliName"
 } else {
-    Write-Step "Run: codex"
+    Write-Step "Run: $cliName"
 }
 
-Write-Host "Codex CLI $resolvedVersion installed successfully."
+Write-Host "codex-cn CLI $resolvedVersion installed successfully."

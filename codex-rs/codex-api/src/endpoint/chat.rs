@@ -8,6 +8,7 @@ use crate::telemetry::SseTelemetry;
 use codex_client::HttpTransport;
 use codex_client::RequestCompression;
 use codex_client::RequestTelemetry;
+use codex_protocol::provider_profiles::BuiltInProviderProfile;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
@@ -53,7 +54,8 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
         &self,
         request: ChatRequest,
     ) -> Result<crate::ResponseStream, ApiError> {
-        self.stream(request.body, request.headers).await
+        self.stream_with_profile(request.body, request.headers, request.provider_profile)
+            .await
     }
 
     fn path() -> &'static str {
@@ -74,6 +76,15 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
         &self,
         body: Value,
         extra_headers: HeaderMap,
+    ) -> Result<crate::ResponseStream, ApiError> {
+        self.stream_with_profile(body, extra_headers, None).await
+    }
+
+    async fn stream_with_profile(
+        &self,
+        body: Value,
+        extra_headers: HeaderMap,
+        provider_profile: Option<&'static BuiltInProviderProfile>,
     ) -> Result<crate::ResponseStream, ApiError> {
         let stream_response = self
             .session
@@ -97,6 +108,7 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
             self.session.provider().stream_idle_timeout,
             self.sse_telemetry.clone(),
             None,
+            provider_profile,
         ))
     }
 }

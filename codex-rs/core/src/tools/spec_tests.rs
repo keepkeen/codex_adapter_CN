@@ -11,6 +11,9 @@ use codex_app_server_protocol::AppInfo;
 use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelsResponse;
+use codex_protocol::provider_profiles::DEEPSEEK_PROVIDER_ID;
+use codex_protocol::provider_profiles::OPENAI_PROVIDER_ID;
+use codex_protocol::provider_profiles::built_in_provider_profile;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
 use std::path::PathBuf;
@@ -798,6 +801,30 @@ fn test_build_specs_artifact_tool_enabled() {
 }
 
 #[test]
+fn unsupported_provider_profile_hides_artifacts_tool() {
+    let mut config = test_config();
+    let runtime_root = tempfile::TempDir::new().expect("create temp codex home");
+    config.codex_home = runtime_root.path().to_path_buf();
+    let model_info = ModelsManager::construct_model_info_offline_for_tests("gpt-5-codex", &config);
+    let mut features = Features::with_defaults();
+    features.enable(Feature::Artifact);
+    let available_models = Vec::new();
+    let tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &features,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        sandbox_policy: &SandboxPolicy::DangerFullAccess,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    })
+    .with_provider_profile_support(built_in_provider_profile(DEEPSEEK_PROVIDER_ID));
+    let (tools, _) = build_specs(&tools_config, None, None, &[]).build();
+
+    assert_lacks_tool_name(&tools, "artifacts");
+}
+
+#[test]
 fn test_build_specs_agent_job_worker_tools_enabled() {
     let config = test_config();
     let model_info = ModelsManager::construct_model_info_offline_for_tests("gpt-5-codex", &config);
@@ -1008,6 +1035,29 @@ fn js_repl_enabled_adds_tools() {
 }
 
 #[test]
+fn emulated_provider_profile_keeps_js_repl_tools_visible() {
+    let config = test_config();
+    let model_info = ModelsManager::construct_model_info_offline_for_tests("gpt-5-codex", &config);
+    let mut features = Features::with_defaults();
+    features.enable(Feature::JsRepl);
+
+    let available_models = Vec::new();
+    let tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &features,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        sandbox_policy: &SandboxPolicy::DangerFullAccess,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    })
+    .with_provider_profile_support(built_in_provider_profile(DEEPSEEK_PROVIDER_ID));
+    let (tools, _) = build_specs(&tools_config, None, None, &[]).build();
+
+    assert_contains_tool_names(&tools, &["js_repl", "js_repl_reset"]);
+}
+
+#[test]
 fn image_generation_tools_require_feature_and_supported_model() {
     let config = test_config();
     let mut supported_model_info =
@@ -1073,6 +1123,30 @@ fn image_generation_tools_require_feature_and_supported_model() {
             .any(|tool| tool.spec.name() == "image_generation"),
         "image_generation should be disabled for unsupported models"
     );
+}
+
+#[test]
+fn unsupported_provider_profile_hides_image_generation_tool() {
+    let config = test_config();
+    let mut model_info = ModelsManager::construct_model_info_offline_for_tests("gpt-5.2", &config);
+    model_info.slug = "custom/gpt-5.2-variant".to_string();
+    let mut features = Features::with_defaults();
+    features.enable(Feature::ImageGeneration);
+
+    let available_models = Vec::new();
+    let tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &features,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        sandbox_policy: &SandboxPolicy::DangerFullAccess,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    })
+    .with_provider_profile_support(built_in_provider_profile(DEEPSEEK_PROVIDER_ID));
+    let (tools, _) = build_specs(&tools_config, None, None, &[]).build();
+
+    assert_lacks_tool_name(&tools, "image_generation");
 }
 
 #[test]
@@ -1200,6 +1274,110 @@ fn web_search_mode_live_sets_external_web_access_true() {
             search_context_size: None,
             search_content_types: None,
         }
+    );
+}
+
+#[test]
+fn live_web_search_registers_local_handler() {
+    let config = test_config();
+    let model_info = ModelsManager::construct_model_info_offline_for_tests("gpt-5-codex", &config);
+    let features = Features::with_defaults();
+    let available_models = Vec::new();
+    let tools_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &features,
+        web_search_mode: Some(WebSearchMode::Live),
+        session_source: SessionSource::Cli,
+        sandbox_policy: &SandboxPolicy::DangerFullAccess,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    });
+    let (_, registry) = build_specs(&tools_config, None, None, &[]).build();
+
+    assert!(registry.has_handler("web_search", None));
+}
+
+#[test]
+fn chat_completions_live_web_search_becomes_function_tool() {
+    let tools_json = create_tools_json_for_chat_completions_api(
+        &[ToolSpec::WebSearch {
+            external_web_access: Some(true),
+            filters: None,
+            user_location: None,
+            search_context_size: None,
+            search_content_types: None,
+        }],
+        None,
+    )
+    .expect("web search tool JSON");
+
+    assert_eq!(tools_json.len(), 1);
+    assert_eq!(
+        tools_json[0]["function"]["name"],
+        serde_json::json!("web_search")
+    );
+    assert_eq!(
+        tools_json[0]["function"]["parameters"]["properties"]["action"]["enum"],
+        serde_json::json!(["search", "open_page", "find_in_page"])
+    );
+    assert_eq!(
+        tools_json[0]["function"]["parameters"]["properties"]["focus"]["type"],
+        serde_json::json!("string")
+    );
+}
+
+#[test]
+fn chat_completions_cached_web_search_stays_hidden() {
+    let tools_json = create_tools_json_for_chat_completions_api(
+        &[ToolSpec::WebSearch {
+            external_web_access: Some(false),
+            filters: None,
+            user_location: None,
+            search_context_size: None,
+            search_content_types: None,
+        }],
+        None,
+    )
+    .expect("web search tool JSON");
+
+    assert!(tools_json.is_empty());
+}
+
+#[test]
+fn chat_completions_respects_profile_tool_transport_policy() {
+    let openai_profile = built_in_provider_profile(OPENAI_PROVIDER_ID).expect("openai profile");
+    let tools_json = create_tools_json_for_chat_completions_api(
+        &[ToolSpec::WebSearch {
+            external_web_access: Some(true),
+            filters: None,
+            user_location: None,
+            search_context_size: None,
+            search_content_types: None,
+        }],
+        Some(openai_profile),
+    )
+    .expect("web search tool JSON");
+
+    assert!(tools_json.is_empty());
+}
+
+#[test]
+fn chat_completions_wraps_js_repl_as_function_tool() {
+    let tools_json = create_tools_json_for_chat_completions_api(&[create_js_repl_tool()], None)
+        .expect("js repl tool JSON");
+
+    assert_eq!(tools_json.len(), 1);
+    assert_eq!(
+        tools_json[0]["function"]["name"],
+        serde_json::json!("js_repl")
+    );
+    assert_eq!(
+        tools_json[0]["function"]["parameters"]["required"],
+        serde_json::json!(["code"])
+    );
+    assert_eq!(
+        tools_json[0]["function"]["parameters"]["properties"]["timeout_ms"]["type"],
+        serde_json::json!("number")
     );
 }
 

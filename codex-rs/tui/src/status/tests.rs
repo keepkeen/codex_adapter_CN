@@ -5,6 +5,8 @@ use chrono::Duration as ChronoDuration;
 use chrono::TimeZone;
 use chrono::Utc;
 use codex_core::AuthManager;
+use codex_core::DEEPSEEK_PROVIDER_ID;
+use codex_core::built_in_model_providers;
 use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
 use codex_protocol::ThreadId;
@@ -162,6 +164,59 @@ async fn status_snapshot_includes_reasoning_details() {
         reasoning_effort_override,
     );
     let mut rendered_lines = render_lines(&composite.display_lines(80));
+    if cfg!(windows) {
+        for line in &mut rendered_lines {
+            *line = line.replace('\\', "/");
+        }
+    }
+    let sanitized = sanitize_directory(rendered_lines).join("\n");
+    assert_snapshot!(sanitized);
+}
+
+#[tokio::test]
+async fn status_snapshot_includes_provider_compatibility_notes() {
+    let temp_home = TempDir::new().expect("temp home");
+    let mut config = test_config(&temp_home).await;
+    config.model = Some("deepseek-chat".to_string());
+    config.model_provider_id = DEEPSEEK_PROVIDER_ID.to_string();
+    config.model_provider = built_in_model_providers(/*openai_base_url*/ None)
+        .get(DEEPSEEK_PROVIDER_ID)
+        .cloned()
+        .expect("deepseek provider should exist");
+    config.cwd = PathBuf::from("/workspace/tests");
+
+    let auth_manager = test_auth_manager(&config);
+    let usage = TokenUsage {
+        input_tokens: 900,
+        cached_input_tokens: 0,
+        output_tokens: 250,
+        reasoning_output_tokens: 0,
+        total_tokens: 1_150,
+    };
+
+    let captured_at = chrono::Local
+        .with_ymd_and_hms(2024, 3, 4, 5, 6, 7)
+        .single()
+        .expect("timestamp");
+    let model_slug = codex_core::test_support::get_model_offline(config.model.as_deref());
+    let token_info = token_info_for(&model_slug, &config, &usage);
+
+    let composite = new_status_output(
+        &config,
+        &auth_manager,
+        Some(&token_info),
+        &usage,
+        &None,
+        None,
+        None,
+        None,
+        None,
+        captured_at,
+        &model_slug,
+        None,
+        None,
+    );
+    let mut rendered_lines = render_lines(&composite.display_lines(90));
     if cfg!(windows) {
         for line in &mut rendered_lines {
             *line = line.replace('\\', "/");
@@ -545,7 +600,7 @@ async fn status_snapshot_hides_when_has_no_credits_flag() {
 }
 
 #[tokio::test]
-async fn status_card_token_usage_excludes_cached_tokens() {
+async fn status_card_token_usage_shows_cached_tokens_separately() {
     let temp_home = TempDir::new().expect("temp home");
     let mut config = test_config(&temp_home).await;
     config.model = Some("gpt-5.1-codex-max".to_string());
@@ -585,8 +640,16 @@ async fn status_card_token_usage_excludes_cached_tokens() {
     let rendered = render_lines(&composite.display_lines(120));
 
     assert!(
-        rendered.iter().all(|line| !line.contains("cached")),
-        "cached tokens should not be displayed, got: {rendered:?}"
+        rendered
+            .iter()
+            .any(|line| line.contains("Token usage:") && line.contains("1K input + 900 output")),
+        "token usage should exclude cached tokens from the blended total, got: {rendered:?}"
+    );
+    assert!(
+        rendered
+            .iter()
+            .any(|line| line.contains("Prompt cache:") && line.contains("200 cached input")),
+        "prompt cache line should display cached input tokens, got: {rendered:?}"
     );
 }
 

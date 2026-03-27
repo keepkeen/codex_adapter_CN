@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage and optionally package the @openai/codex npm module."""
+"""Stage and optionally package the Codex CN npm modules for this fork."""
 
 import argparse
 import json
@@ -14,48 +14,51 @@ CODEX_CLI_ROOT = SCRIPT_DIR.parent
 REPO_ROOT = CODEX_CLI_ROOT.parent
 RESPONSES_API_PROXY_NPM_ROOT = REPO_ROOT / "codex-rs" / "responses-api-proxy" / "npm"
 CODEX_SDK_ROOT = REPO_ROOT / "sdk" / "typescript"
-CODEX_NPM_NAME = "@openai/codex"
+FORK_REPOSITORY_URL = "git+https://github.com/keepkeen/codex_adapter_CN.git"
+CODEX_NPM_NAME = "@keepkeen/codex-cn"
+CODEX_SDK_NPM_NAME = "@keepkeen/codex-cn-sdk"
+RESPONSES_API_PROXY_NPM_NAME = "@keepkeen/codex-cn-responses-api-proxy"
 
 # `npm_name` is the local optional-dependency alias consumed by `bin/codex.js`.
-# The underlying package published to npm is always `@openai/codex`.
+# The underlying package published to npm is always the fork meta package.
 CODEX_PLATFORM_PACKAGES: dict[str, dict[str, str]] = {
     "codex-linux-x64": {
-        "npm_name": "@openai/codex-linux-x64",
+        "npm_name": "@keepkeen/codex-cn-linux-x64",
         "npm_tag": "linux-x64",
         "target_triple": "x86_64-unknown-linux-musl",
         "os": "linux",
         "cpu": "x64",
     },
     "codex-linux-arm64": {
-        "npm_name": "@openai/codex-linux-arm64",
+        "npm_name": "@keepkeen/codex-cn-linux-arm64",
         "npm_tag": "linux-arm64",
         "target_triple": "aarch64-unknown-linux-musl",
         "os": "linux",
         "cpu": "arm64",
     },
     "codex-darwin-x64": {
-        "npm_name": "@openai/codex-darwin-x64",
+        "npm_name": "@keepkeen/codex-cn-darwin-x64",
         "npm_tag": "darwin-x64",
         "target_triple": "x86_64-apple-darwin",
         "os": "darwin",
         "cpu": "x64",
     },
     "codex-darwin-arm64": {
-        "npm_name": "@openai/codex-darwin-arm64",
+        "npm_name": "@keepkeen/codex-cn-darwin-arm64",
         "npm_tag": "darwin-arm64",
         "target_triple": "aarch64-apple-darwin",
         "os": "darwin",
         "cpu": "arm64",
     },
     "codex-win32-x64": {
-        "npm_name": "@openai/codex-win32-x64",
+        "npm_name": "@keepkeen/codex-cn-win32-x64",
         "npm_tag": "win32-x64",
         "target_triple": "x86_64-pc-windows-msvc",
         "os": "win32",
         "cpu": "x64",
     },
     "codex-win32-arm64": {
-        "npm_name": "@openai/codex-win32-arm64",
+        "npm_name": "@keepkeen/codex-cn-win32-arm64",
         "npm_tag": "win32-arm64",
         "target_triple": "aarch64-pc-windows-msvc",
         "os": "win32",
@@ -96,7 +99,7 @@ COMPONENT_DEST_DIR: dict[str, str] = {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build or stage the Codex CLI npm package.")
+    parser = argparse.ArgumentParser(description="Build or stage the codex-cn npm packages.")
     parser.add_argument(
         "--package",
         choices=PACKAGE_CHOICES,
@@ -269,7 +272,12 @@ def stage_sources(staging_dir: Path, version: str, package: str) -> None:
             "os": [platform_package["os"]],
             "cpu": [platform_package["cpu"]],
             "files": ["vendor"],
-            "repository": codex_package_json.get("repository"),
+            "repository": {
+                "type": "git",
+                "url": FORK_REPOSITORY_URL,
+                "directory": "codex-cli",
+            },
+            "publishConfig": {"access": "public"},
         }
 
         engines = codex_package_json.get("engines")
@@ -322,6 +330,11 @@ def stage_sources(staging_dir: Path, version: str, package: str) -> None:
             dependencies = {}
         dependencies[CODEX_NPM_NAME] = version
         package_json["dependencies"] = dependencies
+        package_json["name"] = CODEX_SDK_NPM_NAME
+    elif package == "codex-responses-api-proxy":
+        package_json["name"] = RESPONSES_API_PROXY_NPM_NAME
+    elif package == "codex":
+        package_json["name"] = CODEX_NPM_NAME
 
     with open(staging_dir / "package.json", "w", encoding="utf-8") as out:
         json.dump(package_json, out, indent=2)

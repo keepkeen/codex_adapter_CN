@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Unified entry point for the Codex CLI.
+// Unified entry point for the Codex CN CLI.
 
 import { spawn } from "node:child_process";
 import { existsSync } from "fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -13,12 +14,12 @@ const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 
 const PLATFORM_PACKAGE_BY_TARGET = {
-  "x86_64-unknown-linux-musl": "@openai/codex-linux-x64",
-  "aarch64-unknown-linux-musl": "@openai/codex-linux-arm64",
-  "x86_64-apple-darwin": "@openai/codex-darwin-x64",
-  "aarch64-apple-darwin": "@openai/codex-darwin-arm64",
-  "x86_64-pc-windows-msvc": "@openai/codex-win32-x64",
-  "aarch64-pc-windows-msvc": "@openai/codex-win32-arm64",
+  "x86_64-unknown-linux-musl": "@keepkeen/codex-cn-linux-x64",
+  "aarch64-unknown-linux-musl": "@keepkeen/codex-cn-linux-arm64",
+  "x86_64-apple-darwin": "@keepkeen/codex-cn-darwin-x64",
+  "aarch64-apple-darwin": "@keepkeen/codex-cn-darwin-arm64",
+  "x86_64-pc-windows-msvc": "@keepkeen/codex-cn-win32-x64",
+  "aarch64-pc-windows-msvc": "@keepkeen/codex-cn-win32-arm64",
 };
 
 const { platform, arch } = process;
@@ -95,10 +96,10 @@ try {
     const packageManager = detectPackageManager();
     const updateCommand =
       packageManager === "bun"
-        ? "bun install -g @openai/codex@latest"
-        : "npm install -g @openai/codex@latest";
+        ? "bun install -g @keepkeen/codex-cn@latest"
+        : "npm install -g @keepkeen/codex-cn@latest";
     throw new Error(
-      `Missing optional dependency ${platformPackage}. Reinstall Codex: ${updateCommand}`,
+      `Missing optional dependency ${platformPackage}. Reinstall codex-cn: ${updateCommand}`,
     );
   }
 }
@@ -107,10 +108,10 @@ if (!vendorRoot) {
   const packageManager = detectPackageManager();
   const updateCommand =
     packageManager === "bun"
-      ? "bun install -g @openai/codex@latest"
-      : "npm install -g @openai/codex@latest";
+      ? "bun install -g @keepkeen/codex-cn@latest"
+      : "npm install -g @keepkeen/codex-cn@latest";
   throw new Error(
-    `Missing optional dependency ${platformPackage}. Reinstall Codex: ${updateCommand}`,
+    `Missing optional dependency ${platformPackage}. Reinstall codex-cn: ${updateCommand}`,
   );
 }
 
@@ -166,6 +167,12 @@ if (existsSync(pathDir)) {
 const updatedPath = getUpdatedPath(additionalDirs);
 
 const env = { ...process.env, PATH: updatedPath };
+if (!env.CODEX_HOME) {
+  env.CODEX_HOME = path.join(os.homedir(), ".codex-cn");
+}
+if (!env.CODEX_SQLITE_HOME) {
+  env.CODEX_SQLITE_HOME = path.join(env.CODEX_HOME, "sqlite");
+}
 const packageManagerEnvVar =
   detectPackageManager() === "bun"
     ? "CODEX_MANAGED_BY_BUN"
@@ -175,6 +182,7 @@ env[packageManagerEnvVar] = "1";
 const child = spawn(binaryPath, process.argv.slice(2), {
   stdio: "inherit",
   env,
+  argv0: process.platform === "win32" ? "codex-cn.exe" : "codex-cn",
 });
 
 child.on("error", (err) => {

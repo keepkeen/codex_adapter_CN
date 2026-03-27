@@ -1,0 +1,220 @@
+name: provider-live-matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 19 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  provider-live-smoke:
+    if: github.event_name != 'schedule' || github.repository == 'keepkeen/codex_adapter_CN'
+    name: Provider live smoke - ${{ matrix.provider_id }} / ${{ matrix.workflow_id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider_id: deepseek
+            workflow_id: basic-shell
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_basic_shell_smoke
+          - provider_id: deepseek
+            workflow_id: web-search
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_web_search_smoke
+          - provider_id: deepseek
+            workflow_id: skill
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_skill_smoke
+          - provider_id: deepseek
+            workflow_id: mcp-echo
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_mcp_echo_smoke
+          - provider_id: deepseek
+            workflow_id: subagent
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_subagent_smoke
+          - provider_id: deepseek
+            workflow_id: js-repl
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_js_repl_smoke
+          - provider_id: deepseek
+            workflow_id: output-schema
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_output_schema_smoke
+          - provider_id: deepseek
+            workflow_id: auto-compact
+            package: codex-core
+            test_filter: suite::provider_live_matrix::deepseek_exec_live_auto_compact_smoke
+          - provider_id: deepseek
+            workflow_id: manual-compact-legacy
+            package: codex-tui
+            test_filter: suite::provider_live_compact::deepseek_live_manual_compact_smoke
+          - provider_id: deepseek
+            workflow_id: manual-compact-app-server
+            package: codex-tui-app-server
+            test_filter: suite::provider_live_compact::deepseek_app_server_live_manual_compact_smoke
+          - provider_id: glm
+            workflow_id: basic-shell
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_basic_shell_smoke
+          - provider_id: glm
+            workflow_id: web-search
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_web_search_smoke
+          - provider_id: glm
+            workflow_id: skill
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_skill_smoke
+          - provider_id: glm
+            workflow_id: mcp-echo
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_mcp_echo_smoke
+          - provider_id: glm
+            workflow_id: subagent
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_subagent_smoke
+          - provider_id: glm
+            workflow_id: js-repl
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_js_repl_smoke
+          - provider_id: glm
+            workflow_id: output-schema
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_output_schema_smoke
+          - provider_id: glm
+            workflow_id: auto-compact
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_auto_compact_smoke
+          - provider_id: glm
+            workflow_id: image-input
+            package: codex-core
+            test_filter: suite::provider_live_matrix::glm_exec_live_image_input_smoke
+          - provider_id: glm
+            workflow_id: manual-compact-legacy
+            package: codex-tui
+            test_filter: suite::provider_live_compact::glm_live_manual_compact_smoke
+          - provider_id: glm
+            workflow_id: manual-compact-app-server
+            package: codex-tui-app-server
+            test_filter: suite::provider_live_compact::glm_app_server_live_manual_compact_smoke
+          - provider_id: kimi
+            workflow_id: basic-shell
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_basic_shell_smoke
+          - provider_id: kimi
+            workflow_id: web-search
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_web_search_smoke
+          - provider_id: kimi
+            workflow_id: skill
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_skill_smoke
+          - provider_id: kimi
+            workflow_id: mcp-echo
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_mcp_echo_smoke
+          - provider_id: kimi
+            workflow_id: subagent
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_subagent_smoke
+          - provider_id: kimi
+            workflow_id: js-repl
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_js_repl_smoke
+          - provider_id: kimi
+            workflow_id: output-schema
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_output_schema_smoke
+          - provider_id: kimi
+            workflow_id: auto-compact
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_auto_compact_smoke
+          - provider_id: kimi
+            workflow_id: image-input
+            package: codex-core
+            test_filter: suite::provider_live_matrix::kimi_exec_live_image_input_smoke
+          - provider_id: kimi
+            workflow_id: manual-compact-legacy
+            package: codex-tui
+            test_filter: suite::provider_live_compact::kimi_live_manual_compact_smoke
+          - provider_id: kimi
+            workflow_id: manual-compact-app-server
+            package: codex-tui-app-server
+            test_filter: suite::provider_live_compact::kimi_app_server_live_manual_compact_smoke
+          - provider_id: minimax
+            workflow_id: basic-shell
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_basic_shell_smoke
+          - provider_id: minimax
+            workflow_id: web-search
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_web_search_smoke
+          - provider_id: minimax
+            workflow_id: skill
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_skill_smoke
+          - provider_id: minimax
+            workflow_id: mcp-echo
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_mcp_echo_smoke
+          - provider_id: minimax
+            workflow_id: subagent
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_subagent_smoke
+          - provider_id: minimax
+            workflow_id: js-repl
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_js_repl_smoke
+          - provider_id: minimax
+            workflow_id: output-schema
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_output_schema_smoke
+          - provider_id: minimax
+            workflow_id: auto-compact
+            package: codex-core
+            test_filter: suite::provider_live_matrix::minimax_exec_live_auto_compact_smoke
+          - provider_id: minimax
+            workflow_id: manual-compact-legacy
+            package: codex-tui
+            test_filter: suite::provider_live_compact::minimax_live_manual_compact_smoke
+          - provider_id: minimax
+            workflow_id: manual-compact-app-server
+            package: codex-tui-app-server
+            test_filter: suite::provider_live_compact::minimax_app_server_live_manual_compact_smoke
+    defaults:
+      run:
+        working-directory: codex-rs
+    env:
+      CODEX_PROVIDER_LIVE_ARTIFACT_DIR: provider-live-artifacts
+      CODEX_PROVIDER_LIVE_BIN: target/debug/codex
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+      MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.93.0
+      - name: Restore cargo registry cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: provider-live-cargo-${{ runner.os }}-${{ hashFiles('codex-rs/Cargo.lock') }}
+      - name: Build codex binary for live harnesses
+        run: cargo build -p codex-cli
+      - name: Run ignored provider workflow smoke
+        run: cargo test -p ${{ matrix.package }} --test all "${{ matrix.test_filter }}" -- --ignored --exact --nocapture
+      - name: Upload live smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-live-${{ matrix.provider_id }}-${{ matrix.workflow_id }}
+          path: codex-rs/provider-live-artifacts
+          if-no-files-found: ignore

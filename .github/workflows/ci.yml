@@ -30,26 +30,24 @@ jobs:
       # stage_npm_packages.py requires DotSlash when staging releases.
       - uses: facebook/install-dotslash@v2
 
-      - name: Stage npm package
+      - name: Stage npm package metadata
         id: stage_npm_package
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Use a rust-release version that includes all native binaries.
-          CODEX_VERSION=0.115.0
-          OUTPUT_DIR="${RUNNER_TEMP}"
-          python3 ./scripts/stage_npm_packages.py \
-            --release-version "$CODEX_VERSION" \
+          CODEX_VERSION="$(node -p "require('./codex-cli/package.json').version")"
+          STAGING_DIR="${RUNNER_TEMP}/codex-cn-meta"
+          PACK_OUTPUT="${RUNNER_TEMP}/codex-cn-npm-${CODEX_VERSION}.tgz"
+          python3 ./codex-cli/scripts/build_npm_package.py \
             --package codex \
-            --output-dir "$OUTPUT_DIR"
-          PACK_OUTPUT="${OUTPUT_DIR}/codex-npm-${CODEX_VERSION}.tgz"
+            --version "$CODEX_VERSION" \
+            --staging-dir "$STAGING_DIR" \
+            --pack-output "$PACK_OUTPUT"
           echo "pack_output=$PACK_OUTPUT" >> "$GITHUB_OUTPUT"
 
       - name: Upload staged npm package artifact
         uses: actions/upload-artifact@v7
         with:
-          name: codex-npm-staging
+          name: codex-cn-npm-staging
           path: ${{ steps.stage_npm_package.outputs.pack_output }}
 
       - name: Ensure root README.md contains only ASCII and certain Unicode code points

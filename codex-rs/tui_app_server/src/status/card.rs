@@ -15,6 +15,7 @@ use codex_protocol::protocol::NetworkAccess;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;
+use codex_protocol::provider_profiles::ProviderFeatureNotes;
 use codex_utils_sandbox_summary::summarize_sandbox_policy;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
@@ -54,8 +55,15 @@ struct StatusContextWindowData {
 pub(crate) struct StatusTokenUsageData {
     total: i64,
     input: i64,
+    cached_input: i64,
     output: i64,
     context_window: Option<StatusContextWindowData>,
+}
+
+#[derive(Debug, Clone)]
+struct StatusProviderCompatibilityData {
+    emulated: Vec<&'static str>,
+    unsupported: Vec<&'static str>,
 }
 
 #[derive(Debug)]
@@ -67,6 +75,7 @@ struct StatusHistoryCell {
     agents_summary: String,
     collaboration_mode: Option<String>,
     model_provider: Option<String>,
+    provider_compatibility: Option<StatusProviderCompatibilityData>,
     account: Option<StatusAccountDisplay>,
     thread_name: Option<String>,
     session_id: Option<String>,
@@ -226,6 +235,26 @@ impl StatusHistoryCell {
         };
         let agents_summary = compose_agents_summary(config);
         let model_provider = format_model_provider(config);
+        let provider_compatibility = config
+            .model_provider
+            .built_in_profile()
+            .map(codex_protocol::provider_profiles::BuiltInProviderProfile::compatibility_notes)
+            .filter(|notes| !notes.is_empty())
+            .map(
+                |ProviderFeatureNotes {
+                     emulated,
+                     unsupported,
+                 }| StatusProviderCompatibilityData {
+                    emulated: emulated
+                        .into_iter()
+                        .map(codex_protocol::provider_profiles::ProviderFeature::label)
+                        .collect(),
+                    unsupported: unsupported
+                        .into_iter()
+                        .map(codex_protocol::provider_profiles::ProviderFeature::label)
+                        .collect(),
+                },
+            );
         let account = compose_account_display(account_display);
         let session_id = session_id.as_ref().map(std::string::ToString::to_string);
         let forked_from = forked_from.map(|id| id.to_string());
@@ -243,6 +272,7 @@ impl StatusHistoryCell {
         let token_usage = StatusTokenUsageData {
             total: total_usage.blended_total(),
             input: total_usage.non_cached_input(),
+            cached_input: total_usage.cached_input(),
             output: total_usage.output_tokens,
             context_window,
         };
@@ -260,6 +290,7 @@ impl StatusHistoryCell {
             agents_summary,
             collaboration_mode: collaboration_mode.map(ToString::to_string),
             model_provider,
+            provider_compatibility,
             account,
             thread_name,
             session_id,
@@ -285,6 +316,16 @@ impl StatusHistoryCell {
             Span::from(" output").dim(),
             Span::from(")").dim(),
         ]
+    }
+
+    fn prompt_cache_spans(&self) -> Option<Vec<Span<'static>>> {
+        let cached_input = self.token_usage.cached_input;
+        (cached_input > 0).then(|| {
+            vec![
+                Span::from(format_tokens_compact(cached_input)),
+                Span::from(" cached input").dim(),
+            ]
+        })
     }
 
     fn context_window_spans(&self) -> Option<Vec<Span<'static>>> {
@@ -406,6 +447,36 @@ impl StatusHistoryCell {
             StatusRateLimitData::Missing => push_label(labels, seen, "Limits"),
         }
     }
+
+    fn compatibility_lines(
+        &self,
+        available_inner_width: usize,
+        formatter: &FieldFormatter,
+    ) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        let Some(compatibility) = self.provider_compatibility.as_ref() else {
+            return lines;
+        };
+
+        if !compatibility.emulated.is_empty() {
+            lines.extend(wrap_status_value_lines(
+                formatter,
+                available_inner_width,
+                "Emulated",
+                compatibility.emulated.join(", "),
+            ));
+        }
+        if !compatibility.unsupported.is_empty() {
+            lines.extend(wrap_status_value_lines(
+                formatter,
+                available_inner_width,
+                "Unsupported",
+                compatibility.unsupported.join(", "),
+            ));
+        }
+
+        lines
+    }
 }
 
 impl HistoryCell for StatusHistoryCell {
@@ -413,7 +484,7 @@ impl HistoryCell for StatusHistoryCell {
         let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::from(vec![
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
-            Span::from("OpenAI Codex").bold(),
+            Span::from("codex-cn").bold(),
             Span::from(" ").dim(),
             Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
         ]));
@@ -432,7 +503,7 @@ impl HistoryCell for StatusHistoryCell {
                 (None, None) => "ChatGPT".to_string(),
             },
             StatusAccountDisplay::ApiKey => {
-                "API key configured (run codex login to use ChatGPT)".to_string()
+                "API key configured (run codex-cn login to use ChatGPT)".to_string()
             }
         });
 
@@ -445,6 +516,20 @@ impl HistoryCell for StatusHistoryCell {
 
         if self.model_provider.is_some() {
             push_label(&mut labels, &mut seen, "Model provider");
+        }
+        if self
+            .provider_compatibility
+            .as_ref()
+            .is_some_and(|compatibility| !compatibility.emulated.is_empty())
+        {
+            push_label(&mut labels, &mut seen, "Emulated");
+        }
+        if self
+            .provider_compatibility
+            .as_ref()
+            .is_some_and(|compatibility| !compatibility.unsupported.is_empty())
+        {
+            push_label(&mut labels, &mut seen, "Unsupported");
         }
         if account_value.is_some() {
             push_label(&mut labels, &mut seen, "Account");
@@ -462,6 +547,9 @@ impl HistoryCell for StatusHistoryCell {
             push_label(&mut labels, &mut seen, "Collaboration mode");
         }
         push_label(&mut labels, &mut seen, "Token usage");
+        if self.token_usage.cached_input > 0 {
+            push_label(&mut labels, &mut seen, "Prompt cache");
+        }
         if self.token_usage.context_window.is_some() {
             push_label(&mut labels, &mut seen, "Context window");
         }
@@ -501,6 +589,7 @@ impl HistoryCell for StatusHistoryCell {
         if let Some(model_provider) = self.model_provider.as_ref() {
             lines.push(formatter.line("Model provider", vec![Span::from(model_provider.clone())]));
         }
+        lines.extend(self.compatibility_lines(available_inner_width, &formatter));
         lines.push(formatter.line("Directory", vec![Span::from(directory_value)]));
         lines.push(formatter.line("Permissions", vec![Span::from(self.permissions.clone())]));
         lines.push(formatter.line("Agents.md", vec![Span::from(self.agents_summary.clone())]));
@@ -528,6 +617,9 @@ impl HistoryCell for StatusHistoryCell {
         // Hide token usage only for ChatGPT subscribers
         if !matches!(self.account, Some(StatusAccountDisplay::ChatGpt { .. })) {
             lines.push(formatter.line("Token usage", self.token_usage_spans()));
+        }
+        if let Some(spans) = self.prompt_cache_spans() {
+            lines.push(formatter.line("Prompt cache", spans));
         }
 
         if let Some(spans) = self.context_window_spans() {
@@ -581,4 +673,27 @@ fn sanitize_base_url(raw: &str) -> Option<String> {
     url.set_query(None);
     url.set_fragment(None);
     Some(url.to_string().trim_end_matches('/').to_string()).filter(|value| !value.is_empty())
+}
+
+fn wrap_status_value_lines(
+    formatter: &FieldFormatter,
+    available_inner_width: usize,
+    label: &'static str,
+    value: String,
+) -> Vec<Line<'static>> {
+    let wrapped = adaptive_wrap_lines(
+        [Line::from(vec![Span::from(value)])],
+        RtOptions::new(formatter.value_width(available_inner_width)),
+    );
+    let mut lines = Vec::with_capacity(wrapped.len());
+    let mut wrapped = wrapped.into_iter();
+
+    if let Some(first) = wrapped.next() {
+        lines.push(formatter.line(label, first.spans));
+    }
+    for line in wrapped {
+        lines.push(formatter.continuation(line.spans));
+    }
+
+    lines
 }

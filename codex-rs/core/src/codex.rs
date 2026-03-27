@@ -924,6 +924,7 @@ impl TurnContext {
             sandbox_policy: self.sandbox_policy.get(),
             windows_sandbox_level: self.windows_sandbox_level,
         })
+        .with_provider_profile_support(self.provider.built_in_profile())
         .with_unified_exec_shell_mode(self.tools_config.unified_exec_shell_mode.clone())
         .with_web_search_config(self.tools_config.web_search_config.clone())
         .with_allow_login_shell(self.tools_config.allow_login_shell)
@@ -1362,6 +1363,7 @@ impl Session {
             sandbox_policy: session_configuration.sandbox_policy.get(),
             windows_sandbox_level: session_configuration.windows_sandbox_level,
         })
+        .with_provider_profile_support(provider_for_context.built_in_profile())
         .with_unified_exec_shell_mode_for_session(
             user_shell,
             shell_zsh_path,
@@ -3681,8 +3683,11 @@ impl Session {
         if let Some(token_usage) = token_usage {
             let mut state = self.state.lock().await;
             state.update_token_info_from_usage(token_usage, turn_context.model_context_window());
+            drop(state);
+            self.send_token_count_event(turn_context).await;
+            return;
         }
-        self.send_token_count_event(turn_context).await;
+        self.recompute_token_usage(turn_context).await;
     }
 
     pub(crate) async fn recompute_token_usage(&self, turn_context: &TurnContext) {
@@ -3700,14 +3705,26 @@ impl Session {
                 last_token_usage: TokenUsage::default(),
                 model_context_window: None,
             });
+            let previous_context_tokens = info.last_token_usage.total_tokens.max(0);
+            let estimated_total_tokens = estimated_total_tokens.max(0);
+            let estimated_turn_tokens = estimated_total_tokens
+                .saturating_sub(previous_context_tokens)
+                .max(0);
 
             info.last_token_usage = TokenUsage {
-                input_tokens: 0,
+                input_tokens: estimated_total_tokens,
                 cached_input_tokens: 0,
                 output_tokens: 0,
                 reasoning_output_tokens: 0,
-                total_tokens: estimated_total_tokens.max(0),
+                total_tokens: estimated_total_tokens,
             };
+            info.total_token_usage.add_assign(&TokenUsage {
+                input_tokens: estimated_turn_tokens,
+                cached_input_tokens: 0,
+                output_tokens: 0,
+                reasoning_output_tokens: 0,
+                total_tokens: estimated_turn_tokens,
+            });
 
             if let Some(model_context_window) = turn_context.model_context_window() {
                 info.model_context_window = Some(model_context_window);
@@ -5317,6 +5334,7 @@ async fn spawn_review_thread(
         sandbox_policy: parent_turn_context.sandbox_policy.get(),
         windows_sandbox_level: parent_turn_context.windows_sandbox_level,
     })
+    .with_provider_profile_support(parent_turn_context.provider.built_in_profile())
     .with_unified_exec_shell_mode_for_session(
         sess.services.user_shell.as_ref(),
         sess.services.shell_zsh_path.as_ref(),
@@ -7312,8 +7330,12 @@ async fn try_run_sampling_request(
                     &mut assistant_message_stream_parsers,
                 )
                 .await;
-                sess.update_token_usage_info(&turn_context, token_usage.as_ref())
-                    .await;
+                if let Some(token_usage) = token_usage.as_ref() {
+                    sess.update_token_usage_info(&turn_context, Some(token_usage))
+                        .await;
+                } else {
+                    sess.recompute_token_usage(&turn_context).await;
+                }
                 should_emit_turn_diff = true;
 
                 needs_follow_up |= sess.has_pending_input().await;

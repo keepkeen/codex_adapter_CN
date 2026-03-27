@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use super::parse_freeform_args;
+use super::parse_function_args;
 use crate::codex::make_session_and_context_with_rx;
 use crate::protocol::EventMsg;
 use crate::protocol::ExecCommandSource;
@@ -48,6 +49,14 @@ fn parse_freeform_args_rejects_json_wrapped_code() {
         err.to_string(),
         "js_repl is a freeform tool and expects raw JavaScript source. Resend plain JS only (optional first line `// codex-js-repl: ...`); do not send JSON (`{\"code\":...}`), quoted code, or markdown fences."
     );
+}
+
+#[test]
+fn parse_function_args_reads_code_and_timeout_fields() {
+    let args = parse_function_args(r#"{"code":"console.log('ok');","timeout_ms":15000}"#)
+        .expect("parse function args");
+    assert_eq!(args.code, "console.log('ok');");
+    assert_eq!(args.timeout_ms, Some(15_000));
 }
 
 #[tokio::test]

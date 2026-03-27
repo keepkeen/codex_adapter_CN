@@ -1,9 +1,9 @@
 /// Update action the CLI should perform after the TUI exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateAction {
-    /// Update via `npm install -g @openai/codex@latest`.
+    /// Update via `npm install -g @keepkeen/codex-cn@latest`.
     NpmGlobalLatest,
-    /// Update via `bun install -g @openai/codex@latest`.
+    /// Update via `bun install -g @keepkeen/codex-cn@latest`.
     BunGlobalLatest,
     /// Update via `brew upgrade codex`.
     BrewUpgrade,
@@ -13,8 +13,8 @@ impl UpdateAction {
     /// Returns the list of command-line arguments for invoking the update.
     pub fn command_args(self) -> (&'static str, &'static [&'static str]) {
         match self {
-            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
-            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
+            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@keepkeen/codex-cn"]),
+            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@keepkeen/codex-cn"]),
             UpdateAction::BrewUpgrade => ("brew", &["upgrade", "--cask", "codex"]),
         }
     }
@@ -53,6 +53,10 @@ fn detect_update_action(
     } else if managed_by_bun {
         Some(UpdateAction::BunGlobalLatest)
     } else if is_macos
+        && matches!(
+            current_exe.file_stem().and_then(|stem| stem.to_str()),
+            Some("codex")
+        )
         && (current_exe.starts_with("/opt/homebrew") || current_exe.starts_with("/usr/local"))
     {
         Some(UpdateAction::BrewUpgrade)
@@ -78,6 +82,15 @@ mod tests {
         assert_eq!(
             detect_update_action(false, std::path::Path::new("/any/path"), false, true),
             Some(UpdateAction::BunGlobalLatest)
+        );
+        assert_eq!(
+            detect_update_action(
+                true,
+                std::path::Path::new("/opt/homebrew/bin/codex-cn"),
+                false,
+                false
+            ),
+            None
         );
         assert_eq!(
             detect_update_action(

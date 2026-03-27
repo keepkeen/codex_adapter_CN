@@ -124,7 +124,7 @@ impl ToolHandler for JsReplHandler {
         }
 
         let args = match payload {
-            ToolPayload::Function { arguments } => parse_arguments(&arguments)?,
+            ToolPayload::Function { arguments } => parse_function_args(&arguments)?,
             ToolPayload::Custom { input } => parse_freeform_args(&input)?,
             _ => {
                 return Err(FunctionCallError::RespondToModel(
@@ -203,6 +203,10 @@ impl ToolHandler for JsReplResetHandler {
             Some(true),
         ))
     }
+}
+
+fn parse_function_args(arguments: &str) -> Result<JsReplArgs, FunctionCallError> {
+    parse_arguments(arguments)
 }
 
 fn parse_freeform_args(input: &str) -> Result<JsReplArgs, FunctionCallError> {

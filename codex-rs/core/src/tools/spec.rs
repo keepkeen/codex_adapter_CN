@@ -20,6 +20,7 @@ use crate::tools::handlers::PLAN_TOOL;
 use crate::tools::handlers::TOOL_SEARCH_DEFAULT_LIMIT;
 use crate::tools::handlers::TOOL_SEARCH_TOOL_NAME;
 use crate::tools::handlers::TOOL_SUGGEST_TOOL_NAME;
+use crate::tools::handlers::WebSearchHandler;
 use crate::tools::handlers::agent_jobs::BatchJobHandler;
 use crate::tools::handlers::apply_patch::create_apply_patch_freeform_tool;
 use crate::tools::handlers::apply_patch::create_apply_patch_json_tool;
@@ -46,6 +47,9 @@ use codex_protocol::openai_models::WebSearchToolType;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::provider_profiles::BuiltInProviderProfile;
+use codex_protocol::provider_profiles::JsReplTransport;
+use codex_protocol::provider_profiles::ProviderFeature;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -60,6 +64,14 @@ const TOOL_SEARCH_DESCRIPTION_TEMPLATE: &str =
 const TOOL_SUGGEST_DESCRIPTION_TEMPLATE: &str =
     include_str!("../../templates/search_tool/tool_suggest_description.md");
 const WEB_SEARCH_CONTENT_TYPES: [&str; 2] = ["text", "image"];
+const CHAT_COMPLETIONS_WEB_SEARCH_TOOL_DESCRIPTION: &str = "Searches the web through a local adapter for chat-completions providers. \
+Use `action=\"search\"` to find results with titles, URLs, and snippets. \
+Use `action=\"open_page\"` to fetch readable text from a URL, optionally narrowed to a focused question or topic. \
+Use `action=\"find_in_page\"` to search within a fetched page for a pattern. \
+This adapter only supports live web access.";
+const CHAT_COMPLETIONS_JS_REPL_TOOL_DESCRIPTION: &str = "Runs JavaScript in a persistent Node kernel with top-level await. \
+Pass the entire JavaScript program in `code`, optionally with a first-line `// codex-js-repl: timeout_ms=15000` pragma. \
+Do not wrap the code in markdown fences or extra quoting inside `code`.";
 
 fn unified_exec_output_schema() -> JsonValue {
     json!({
@@ -516,6 +528,19 @@ impl ToolsConfig {
 
     pub fn with_web_search_config(mut self, web_search_config: Option<WebSearchConfig>) -> Self {
         self.web_search_config = web_search_config;
+        self
+    }
+
+    pub fn with_provider_profile_support(
+        mut self,
+        provider_profile: Option<&BuiltInProviderProfile>,
+    ) -> Self {
+        if let Some(profile) = provider_profile {
+            self.js_repl_enabled &= profile.supports(ProviderFeature::JsRepl);
+            self.js_repl_tools_only &= self.js_repl_enabled;
+            self.image_gen_tool &= profile.supports(ProviderFeature::ImageGeneration);
+            self.artifact_tools &= profile.supports(ProviderFeature::Artifacts);
+        }
         self
     }
 
@@ -2491,22 +2516,108 @@ pub fn create_tools_json_for_responses_api(
 /// Returns JSON values compatible with Chat Completions function calling.
 pub(crate) fn create_tools_json_for_chat_completions_api(
     tools: &[ToolSpec],
+    provider_profile: Option<&BuiltInProviderProfile>,
 ) -> crate::error::Result<Vec<serde_json::Value>> {
     let mut tools_json = Vec::new();
+    let emulate_live_web_search = provider_profile
+        .map(|profile| profile.tool_transport.emulate_live_web_search)
+        .unwrap_or(true);
+    let js_repl_transport = provider_profile
+        .map(|profile| profile.tool_transport.js_repl_transport)
+        .unwrap_or(JsReplTransport::FunctionWrapper);
 
     for tool in tools {
-        let ToolSpec::Function(function) = tool else {
-            continue;
-        };
-        tools_json.push(json!({
-            "type": "function",
-            "function": {
-                "name": function.name.as_str(),
-                "description": function.description.as_str(),
-                "strict": function.strict,
-                "parameters": &function.parameters,
-            },
-        }));
+        match tool {
+            ToolSpec::Function(function) => {
+                tools_json.push(json!({
+                    "type": "function",
+                    "function": {
+                        "name": function.name.as_str(),
+                        "description": function.description.as_str(),
+                        "strict": function.strict,
+                        "parameters": &function.parameters,
+                    },
+                }));
+            }
+            ToolSpec::WebSearch {
+                external_web_access: Some(true),
+                ..
+            } if emulate_live_web_search => {
+                tools_json.push(json!({
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "description": CHAT_COMPLETIONS_WEB_SEARCH_TOOL_DESCRIPTION,
+                        "strict": false,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "action": {
+                                    "type": "string",
+                                    "description": "Search the web, open a page, or search inside a page.",
+                                    "enum": ["search", "open_page", "find_in_page"],
+                                },
+                                "query": {
+                                    "type": "string",
+                                    "description": "Search query to use when `action` is `search`.",
+                                },
+                                "url": {
+                                    "type": "string",
+                                    "description": "HTTP or HTTPS URL to open when `action` is `open_page` or `find_in_page`.",
+                                },
+                                "focus": {
+                                    "type": "string",
+                                    "description": "Optional question or topic to use when extracting the most relevant passages for `action=\"open_page\"`.",
+                                },
+                                "pattern": {
+                                    "type": "string",
+                                    "description": "Pattern to search for inside the fetched page when `action` is `find_in_page`.",
+                                },
+                                "max_results": {
+                                    "type": "number",
+                                    "description": "Maximum number of search results to return for `action=\"search\"` (default depends on search context, max 20).",
+                                },
+                            },
+                            "required": ["action"],
+                            "additionalProperties": false,
+                        },
+                    },
+                }));
+            }
+            ToolSpec::WebSearch { .. }
+            | ToolSpec::ToolSearch { .. }
+            | ToolSpec::LocalShell {}
+            | ToolSpec::ImageGeneration { .. } => {}
+            ToolSpec::Freeform(tool)
+                if tool.name == "js_repl"
+                    && js_repl_transport == JsReplTransport::FunctionWrapper =>
+            {
+                tools_json.push(json!({
+                    "type": "function",
+                    "function": {
+                        "name": "js_repl",
+                        "description": CHAT_COMPLETIONS_JS_REPL_TOOL_DESCRIPTION,
+                        "strict": false,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Raw JavaScript source to execute in the persistent js_repl kernel."
+                                },
+                                "timeout_ms": {
+                                    "type": "number",
+                                    "description": "Optional execution timeout in milliseconds."
+                                }
+                            },
+                            "required": ["code"],
+                            "additionalProperties": false
+                        }
+                    }
+                }));
+            }
+            ToolSpec::Freeform(_) => {}
+        }
     }
 
     Ok(tools_json)
@@ -3148,6 +3259,12 @@ pub(crate) fn build_specs_with_discoverable_tools(
             /*supports_parallel_tool_calls*/ false,
             config.code_mode_enabled,
         );
+        if external_web_access {
+            builder.register_handler(
+                "web_search",
+                Arc::new(WebSearchHandler::new(config.web_search_config.clone())),
+            );
+        }
     }
 
     if config.image_gen_tool {

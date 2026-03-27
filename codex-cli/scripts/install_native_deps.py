@@ -45,12 +45,12 @@ WINDOWS_TARGETS = tuple(target for target in BINARY_TARGETS if "windows" in targ
 
 BINARY_COMPONENTS = {
     "codex": BinaryComponent(
-        artifact_prefix="codex",
+        artifact_prefix="codex-cn",
         dest_dir="codex",
         binary_basename="codex",
     ),
     "codex-responses-api-proxy": BinaryComponent(
-        artifact_prefix="codex-responses-api-proxy",
+        artifact_prefix="codex-cn-responses-api-proxy",
         dest_dir="codex-responses-api-proxy",
         binary_basename="codex-responses-api-proxy",
     ),
@@ -169,13 +169,14 @@ def main() -> int:
     if not workflow_url:
         workflow_url = DEFAULT_WORKFLOW_URL
 
+    workflow_repo = workflow_repo_from_url(workflow_url)
     workflow_id = workflow_url.rstrip("/").split("/")[-1]
-    print(f"Downloading native artifacts from workflow {workflow_id}...")
+    print(f"Downloading native artifacts from workflow {workflow_repo}#{workflow_id}...")
 
-    with _gha_group(f"Download native artifacts from workflow {workflow_id}"):
+    with _gha_group(f"Download native artifacts from workflow {workflow_repo}#{workflow_id}"):
         with tempfile.TemporaryDirectory(prefix="codex-native-artifacts-") as artifacts_dir_str:
             artifacts_dir = Path(artifacts_dir_str)
-            _download_artifacts(workflow_id, artifacts_dir)
+            _download_artifacts(workflow_repo, workflow_id, artifacts_dir)
             install_binary_components(
                 artifacts_dir,
                 vendor_dir,
@@ -259,7 +260,15 @@ def fetch_rg(
     return [results[target] for target in targets]
 
 
-def _download_artifacts(workflow_id: str, dest_dir: Path) -> None:
+def workflow_repo_from_url(workflow_url: str) -> str:
+    parsed = urlparse(workflow_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        raise ValueError(f"Could not determine GitHub repository from workflow URL: {workflow_url}")
+    return f"{parts[0]}/{parts[1]}"
+
+
+def _download_artifacts(repo: str, workflow_id: str, dest_dir: Path) -> None:
     cmd = [
         "gh",
         "run",
@@ -267,7 +276,7 @@ def _download_artifacts(workflow_id: str, dest_dir: Path) -> None:
         "--dir",
         str(dest_dir),
         "--repo",
-        "openai/codex",
+        repo,
         workflow_id,
     ]
     subprocess.check_call(cmd)

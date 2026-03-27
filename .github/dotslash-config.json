@@ -1,58 +1,58 @@
 {
   "outputs": {
-    "codex": {
+    "codex-cn": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-aarch64-apple-darwin\\.zst$",
-          "path": "codex"
+          "regex": "^codex-cn-aarch64-apple-darwin\\.zst$",
+          "path": "codex-cn"
         },
         "macos-x86_64": {
-          "regex": "^codex-x86_64-apple-darwin\\.zst$",
-          "path": "codex"
+          "regex": "^codex-cn-x86_64-apple-darwin\\.zst$",
+          "path": "codex-cn"
         },
         "linux-x86_64": {
-          "regex": "^codex-x86_64-unknown-linux-musl\\.zst$",
-          "path": "codex"
+          "regex": "^codex-cn-x86_64-unknown-linux-musl\\.zst$",
+          "path": "codex-cn"
         },
         "linux-aarch64": {
-          "regex": "^codex-aarch64-unknown-linux-musl\\.zst$",
-          "path": "codex"
+          "regex": "^codex-cn-aarch64-unknown-linux-musl\\.zst$",
+          "path": "codex-cn"
         },
         "windows-x86_64": {
-          "regex": "^codex-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex.exe"
+          "regex": "^codex-cn-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "codex-cn.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex.exe"
+          "regex": "^codex-cn-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "codex-cn.exe"
         }
       }
     },
-    "codex-responses-api-proxy": {
+    "codex-cn-responses-api-proxy": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-apple-darwin\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^codex-cn-responses-api-proxy-aarch64-apple-darwin\\.zst$",
+          "path": "codex-cn-responses-api-proxy"
         },
         "macos-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-apple-darwin\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^codex-cn-responses-api-proxy-x86_64-apple-darwin\\.zst$",
+          "path": "codex-cn-responses-api-proxy"
         },
         "linux-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-unknown-linux-musl\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^codex-cn-responses-api-proxy-x86_64-unknown-linux-musl\\.zst$",
+          "path": "codex-cn-responses-api-proxy"
         },
         "linux-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-unknown-linux-musl\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^codex-cn-responses-api-proxy-aarch64-unknown-linux-musl\\.zst$",
+          "path": "codex-cn-responses-api-proxy"
         },
         "windows-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-responses-api-proxy.exe"
+          "regex": "^codex-cn-responses-api-proxy-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "codex-cn-responses-api-proxy.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-responses-api-proxy.exe"
+          "regex": "^codex-cn-responses-api-proxy-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "codex-cn-responses-api-proxy.exe"
         }
       }
     },

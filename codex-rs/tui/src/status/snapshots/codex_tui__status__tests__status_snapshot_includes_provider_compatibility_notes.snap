@@ -1,0 +1,25 @@
+---
+source: tui/src/status/tests.rs
+expression: sanitized
+---
+/status
+
+╭────────────────────────────────────────────────────────────────────────────────────╮
+│  >_ codex-cn (v0.0.0)                                                              │
+│                                                                                    │
+│ Visit https://chatgpt.com/codex/settings/usage for up-to-date                      │
+│ information on rate limits and credits                                             │
+│                                                                                    │
+│  Model:            deepseek-chat                                                   │
+│  Model provider:   DeepSeek - https://api.deepseek.com                             │
+│  Emulated:         MCP, skills, subagents, web search, js repl, structured output, │
+│                    resume, /compact, auto compact, token usage                     │
+│  Unsupported:      image generation, artifacts, image input                        │
+│  Directory: [[workspace]]                                                          │
+│  Permissions:      Custom (read-only, on-request)                                  │
+│  Agents.md:        <none>                                                          │
+│                                                                                    │
+│  Token usage:      1.15K total  (900 input + 250 output)                           │
+│  Context window:   100% left (1.15K used / 272K)                                   │
+│  Limits:           data not available yet                                          │
+╰────────────────────────────────────────────────────────────────────────────────────╯

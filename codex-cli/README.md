@@ -1,12 +1,12 @@
-<h1 align="center">OpenAI Codex CLI</h1>
-<p align="center">Lightweight coding agent that runs in your terminal</p>
+<h1 align="center">codex-cn CLI</h1>
+<p align="center">Forked Codex CLI for Chinese provider backends</p>
 
-<p align="center"><code>npm i -g @openai/codex</code></p>
+<p align="center"><code>npm i -g @keepkeen/codex-cn</code></p>
 
 > [!IMPORTANT]
-> This is the documentation for the _legacy_ TypeScript implementation of the Codex CLI. It has been superseded by the _Rust_ implementation. See the [README in the root of the Codex repository](https://github.com/openai/codex/blob/main/README.md) for details.
+> This is the documentation for the _legacy_ TypeScript implementation of the `codex-cn` CLI. It has been superseded by the _Rust_ implementation. See the [README in the root of the fork](https://github.com/keepkeen/codex_adapter_CN/blob/main/README.md) for details.
 
-![Codex demo GIF using: codex "explain this codebase to me"](../.github/demo.gif)
+![Codex demo GIF using: codex-cn "explain this codebase to me"](../.github/demo.gif)
 
 ---
 
@@ -17,7 +17,7 @@
 
 - [Experimental technology disclaimer](#experimental-technology-disclaimer)
 - [Quickstart](#quickstart)
-- [Why Codex?](#why-codex)
+- [Why codex-cn?](#why-codex-cn)
 - [Security model & permissions](#security-model--permissions)
   - [Platform sandboxing details](#platform-sandboxing-details)
 - [System requirements](#system-requirements)
@@ -49,7 +49,7 @@
   - [Getting help](#getting-help)
   - [Contributor license agreement (CLA)](#contributor-license-agreement-cla)
     - [Quick fixes](#quick-fixes)
-  - [Releasing `codex`](#releasing-codex)
+  - [Releasing `codex-cn`](#releasing-codex-cn)
   - [Alternative build options](#alternative-build-options)
     - [Nix flake development](#nix-flake-development)
 - [Security & responsible AI](#security--responsible-ai)
@@ -77,7 +77,7 @@ Help us improve by filing issues or submitting PRs (see the section below for ho
 Install globally:
 
 ```shell
-npm install -g @openai/codex
+npm install -g @keepkeen/codex-cn
 ```
 
 Next, set your OpenAI API key as an environment variable:
@@ -129,28 +129,28 @@ export OPENAI_API_KEY="your-api-key-here"
 Run interactively:
 
 ```shell
-codex
+codex-cn
 ```
 
 Or, run with a prompt as input (and optionally in `Full Auto` mode):
 
 ```shell
-codex "explain this codebase to me"
+codex-cn "explain this codebase to me"
 ```
 
 ```shell
-codex --approval-mode full-auto "create the fanciest todo-list app"
+codex-cn --approval-mode full-auto "create the fanciest todo-list app"
 ```
 
-That's it - Codex will scaffold a file, run it inside a sandbox, install any
+That's it - `codex-cn` will scaffold a file, run it inside a sandbox, install any
 missing dependencies, and show you the live result. Approve the changes and
 they'll be committed to your working directory.
 
 ---
 
-## Why Codex?
+## Why codex-cn?
 
-Codex CLI is built for developers who already **live in the terminal** and want
+The legacy `codex-cn` CLI is built for developers who already **live in the terminal** and want
 ChatGPT-level reasoning **plus** the power to actually run code, manipulate
 files, and iterate - all under version control. In short, it's _chat-driven
 development_ that understands and executes your repo.
@@ -190,7 +190,7 @@ The hardening mechanism Codex uses depends on your OS:
 - **macOS 12+** - commands are wrapped with **Apple Seatbelt** (`sandbox-exec`).
 
   - Everything is placed in a read-only jail except for a small set of
-    writable roots (`$PWD`, `$TMPDIR`, `~/.codex`, etc.).
+    writable roots (`$PWD`, `$TMPDIR`, `~/.codex-cn`, etc.).
   - Outbound network is _fully blocked_ by default - even if a child process
     tries to `curl` somewhere it will fail.
 
@@ -220,10 +220,10 @@ The hardening mechanism Codex uses depends on your OS:
 
 | Command                              | Purpose                             | Example                              |
 | ------------------------------------ | ----------------------------------- | ------------------------------------ |
-| `codex`                              | Interactive REPL                    | `codex`                              |
-| `codex "..."`                        | Initial prompt for interactive REPL | `codex "fix lint errors"`            |
-| `codex -q "..."`                     | Non-interactive "quiet mode"        | `codex -q --json "explain utils.ts"` |
-| `codex completion <bash\|zsh\|fish>` | Print shell completion script       | `codex completion bash`              |
+| `codex-cn`                              | Interactive REPL                    | `codex-cn`                              |
+| `codex-cn "..."`                        | Initial prompt for interactive REPL | `codex-cn "fix lint errors"`            |
+| `codex-cn -q "..."`                     | Non-interactive "quiet mode"        | `codex-cn -q --json "explain utils.ts"` |
+| `codex-cn completion <bash\|zsh\|fish>` | Print shell completion script       | `codex-cn completion bash`              |
 
 Key flags: `--model/-m`, `--approval-mode/-a`, `--quiet/-q`, and `--notify`.
 
@@ -233,7 +233,7 @@ Key flags: `--model/-m`, `--approval-mode/-a`, `--quiet/-q`, and `--notify`.
 
 You can give Codex extra instructions and guidance using `AGENTS.md` files. Codex looks for `AGENTS.md` files in the following places, and merges them top-down:
 
-1. `~/.codex/AGENTS.md` - personal global guidance
+1. `~/.codex-cn/AGENTS.md` - personal global guidance
 2. `AGENTS.md` at repo root - shared project notes
 3. `AGENTS.md` in the current working directory - sub-folder/feature specifics
 
@@ -248,9 +248,9 @@ Run Codex head-less in pipelines. Example GitHub Action step:
 ```yaml
 - name: Update changelog via Codex
   run: |
-    npm install -g @openai/codex
+    npm install -g @keepkeen/codex-cn
     export OPENAI_API_KEY="${{ secrets.OPENAI_KEY }}"
-    codex -a auto-edit --quiet "update CHANGELOG for next release"
+    codex-cn -a auto-edit --quiet "update CHANGELOG for next release"
 ```
 
 Set `CODEX_QUIET_MODE=1` to silence interactive UI noise.
@@ -260,24 +260,24 @@ Set `CODEX_QUIET_MODE=1` to silence interactive UI noise.
 Setting the environment variable `DEBUG=true` prints full API request and response details:
 
 ```shell
-DEBUG=true codex
+DEBUG=true codex-cn
 ```
 
 ---
 
 ## Recipes
 
-Below are a few bite-size examples you can copy-paste. Replace the text in quotes with your own task. See the [prompting guide](https://github.com/openai/codex/blob/main/codex-cli/examples/prompting_guide.md) for more tips and usage patterns.
+Below are a few bite-size examples you can copy-paste. Replace the text in quotes with your own task. See the [prompting guide](https://github.com/keepkeen/codex_adapter_CN/blob/main/codex-cli/examples/prompting_guide.md) for more tips and usage patterns.
 
 | ✨  | What you type                                                                   | What happens                                                               |
 | --- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1   | `codex "Refactor the Dashboard component to React Hooks"`                       | Codex rewrites the class component, runs `npm test`, and shows the diff.   |
-| 2   | `codex "Generate SQL migrations for adding a users table"`                      | Infers your ORM, creates migration files, and runs them in a sandboxed DB. |
-| 3   | `codex "Write unit tests for utils/date.ts"`                                    | Generates tests, executes them, and iterates until they pass.              |
-| 4   | `codex "Bulk-rename *.jpeg -> *.jpg with git mv"`                               | Safely renames files and updates imports/usages.                           |
-| 5   | `codex "Explain what this regex does: ^(?=.*[A-Z]).{8,}$"`                      | Outputs a step-by-step human explanation.                                  |
-| 6   | `codex "Carefully review this repo, and propose 3 high impact well-scoped PRs"` | Suggests impactful PRs in the current codebase.                            |
-| 7   | `codex "Look for vulnerabilities and create a security review report"`          | Finds and explains security bugs.                                          |
+| 1   | `codex-cn "Refactor the Dashboard component to React Hooks"`                       | Codex rewrites the class component, runs `npm test`, and shows the diff.   |
+| 2   | `codex-cn "Generate SQL migrations for adding a users table"`                      | Infers your ORM, creates migration files, and runs them in a sandboxed DB. |
+| 3   | `codex-cn "Write unit tests for utils/date.ts"`                                    | Generates tests, executes them, and iterates until they pass.              |
+| 4   | `codex-cn "Bulk-rename *.jpeg -> *.jpg with git mv"`                               | Safely renames files and updates imports/usages.                           |
+| 5   | `codex-cn "Explain what this regex does: ^(?=.*[A-Z]).{8,}$"`                      | Outputs a step-by-step human explanation.                                  |
+| 6   | `codex-cn "Carefully review this repo, and propose 3 high impact well-scoped PRs"` | Suggests impactful PRs in the current codebase.                            |
+| 7   | `codex-cn "Look for vulnerabilities and create a security review report"`          | Finds and explains security bugs.                                          |
 
 ---
 
@@ -287,13 +287,13 @@ Below are a few bite-size examples you can copy-paste. Replace the text in quote
 <summary><strong>From npm (Recommended)</strong></summary>
 
 ```bash
-npm install -g @openai/codex
+yarn global add @keepkeen/codex-cn
 # or
-yarn global add @openai/codex
+npm install -g @keepkeen/codex-cn
 # or
-bun install -g @openai/codex
+bun install -g @keepkeen/codex-cn
 # or
-pnpm add -g @openai/codex
+pnpm add -g @keepkeen/codex-cn
 ```
 
 </details>
@@ -303,8 +303,8 @@ pnpm add -g @openai/codex
 
 ```bash
 # Clone the repository and navigate to the CLI package
-git clone https://github.com/openai/codex.git
-cd codex/codex-cli
+git clone https://github.com/keepkeen/codex_adapter_CN.git
+cd codex_adapter_CN/codex-cli
 
 # Enable corepack
 corepack enable
@@ -332,7 +332,7 @@ pnpm link
 
 ## Configuration guide
 
-Codex configuration files can be placed in the `~/.codex/` directory, supporting both YAML and JSON formats.
+Codex configuration files can be placed in the `~/.codex-cn/` directory, supporting both YAML and JSON formats.
 
 ### Basic configuration parameters
 
@@ -365,7 +365,7 @@ In the `history` object, you can configure conversation history settings:
 
 ### Configuration examples
 
-1. YAML format (save as `~/.codex/config.yaml`):
+1. YAML format (save as `~/.codex-cn/config.yaml`):
 
 ```yaml
 model: o4-mini
@@ -374,7 +374,7 @@ fullAutoErrorMode: ask-user
 notify: true
 ```
 
-2. JSON format (save as `~/.codex/config.json`):
+2. JSON format (save as `~/.codex-cn/config.json`):
 
 ```json
 {
@@ -455,7 +455,7 @@ Below is a comprehensive example of `config.json` with multiple custom providers
 
 ### Custom instructions
 
-You can create a `~/.codex/AGENTS.md` file to define custom guidance for the agent:
+You can create a `~/.codex-cn/AGENTS.md` file to define custom guidance for the agent:
 
 ```markdown
 - Always respond with emojis
@@ -527,7 +527,7 @@ Codex CLI **does** support OpenAI organizations with [Zero Data Retention (ZDR)]
 OpenAI rejected the request. Error details: Status: 400, Code: unsupported_parameter, Type: invalid_request_error, Message: 400 Previous response cannot be used for this organization due to Zero Data Retention.
 ```
 
-You may need to upgrade to a more recent version with: `npm i -g @openai/codex@latest`
+You may need to upgrade to a more recent version with: `npm i -g @keepkeen/codex-cn@latest`
 
 ---
 
@@ -602,7 +602,7 @@ To debug the CLI with a visual debugger, do the following in the `codex-cli` fol
 
 1. **Start with an issue.** Open a new one or comment on an existing discussion so we can agree on the solution before code is written.
 2. **Add or update tests.** Every new feature or bug-fix should come with test coverage that fails before your change and passes afterwards. 100% coverage is not required, but aim for meaningful assertions.
-3. **Document behaviour.** If your change affects user-facing behaviour, update the README, inline help (`codex --help`), or relevant example projects.
+3. **Document behaviour.** If your change affects user-facing behaviour, update the README, inline help (`codex-cn --help`), or relevant example projects.
 4. **Keep commits atomic.** Each commit should compile and the tests should pass. This makes reviews and potential rollbacks easier.
 
 ### Opening a pull request
@@ -653,7 +653,7 @@ No special Git commands, email attachments, or commit footers required.
 
 The **DCO check** blocks merges until every commit in the PR carries the footer (with squash this is just the one).
 
-### Releasing `codex`
+### Releasing `codex-cn`
 
 To publish a new version of the CLI you first need to stage the npm package. A
 helper script in `codex-cli/scripts/` does all the heavy lifting. Inside the
@@ -676,8 +676,10 @@ Go to the folder where the release is staged and verify that it works as intende
 
 ```
 cd "$RELEASE_DIR"
-npm publish
+npm publish --access public --tag dev
 ```
+
+For this fork, first publish also requires npm-side authentication or prior trusted-publisher bootstrap for the `@keepkeen/*` package names. If `npm whoami --registry=https://registry.npmjs.org/` fails with `ENEEDAUTH`, local publish will fail until that account-side setup is complete.
 
 ### Alternative build options
 
@@ -693,7 +695,7 @@ nix develop .#codex-cli # For entering codex-cli specific shell
 nix develop .#codex-rs # For entering codex-rs specific shell
 ```
 
-This shell includes Node.js, installs dependencies, builds the CLI, and provides a `codex` command alias.
+This shell includes Node.js, installs dependencies, builds the CLI, and provides a `codex-cn` command alias.
 
 Build and run the CLI directly:
 
@@ -701,7 +703,7 @@ Build and run the CLI directly:
 # Use either one of the commands according to which implementation you want to work with
 nix build .#codex-cli # For building codex-cli
 nix build .#codex-rs # For building codex-rs
-./result/bin/codex --help
+./result/bin/codex-cn --help
 ```
 
 Run the CLI via the flake app:
