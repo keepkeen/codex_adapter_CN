@@ -77,7 +77,8 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
         body: Value,
         extra_headers: HeaderMap,
     ) -> Result<crate::ResponseStream, ApiError> {
-        self.stream_with_profile(body, extra_headers, None).await
+        self.stream_with_profile(body, extra_headers, /*provider_profile*/ None)
+            .await
     }
 
     async fn stream_with_profile(

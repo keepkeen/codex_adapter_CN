@@ -228,3 +228,12 @@ The matrix is now wired into `.github/workflows/provider-live-matrix.yml` for ma
   - `npm pack --dry-run` in `codex-cli`
   - `npm pack --dry-run` in `sdk/typescript`
   - `npm pack --dry-run` in `codex-rs/responses-api-proxy/npm`
+
+## GitHub Release
+
+This fork now treats GitHub Release publishing as a first-class path.
+
+- Release assets are uploaded by `.github/workflows/rust-release.yml`.
+- The trigger is a tag push in the form `rust-v<version>`, where `<version>` must match `codex-rs/Cargo.toml`.
+- To avoid remembering the tag format by hand, `.github/workflows/create-release-tag.yml` can be run manually from the Actions tab and will create/push the matching `rust-v<version>` tag for the current `main`.
+- GitHub Release asset upload is intentionally decoupled from npm publication on this fork. By default, fork releases still create GitHub Release binaries and tarballs, but npm publication is skipped unless the repository variable `ENABLE_NPM_PUBLISH=true` is set after bootstrap/trusted-publishing setup for `@keepkeen/*` is complete.

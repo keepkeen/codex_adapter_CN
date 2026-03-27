@@ -26,9 +26,16 @@ pub enum StructuredOutputStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssistantToolCallReasoningPolicy {
+    OmitWhenMissing,
+    EmitEmptyWhenMissing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChatRequestDialect {
     pub model_rewrite: ChatModelRewrite,
     pub reasoning_format: Option<ChatReasoningFormat>,
+    pub assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy,
     pub supports_developer_role: bool,
     pub merges_system_messages: bool,
     pub hoists_system_messages_to_front: bool,

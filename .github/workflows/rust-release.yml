@@ -476,9 +476,18 @@ jobs:
         id: npm_publish_settings
         env:
           VERSION: ${{ steps.release_name.outputs.name }}
+          ENABLE_NPM_PUBLISH: ${{ vars.ENABLE_NPM_PUBLISH }}
         run: |
           set -euo pipefail
           version="${VERSION}"
+          enable_npm_publish="${ENABLE_NPM_PUBLISH:-}"
+
+          if [[ "${GITHUB_REPOSITORY}" != "openai/codex" && "${enable_npm_publish,,}" != "true" ]]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=" >> "$GITHUB_OUTPUT"
+            echo "Skipping npm publish for fork ${GITHUB_REPOSITORY}; set repository variable ENABLE_NPM_PUBLISH=true after bootstrap publish / trusted publishing is ready."
+            exit 0
+          fi
 
           if [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "should_publish=true" >> "$GITHUB_OUTPUT"

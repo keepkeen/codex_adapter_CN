@@ -50,7 +50,7 @@ impl BundledModelCatalogEntry {
             default_verbosity: None,
             apply_patch_tool_type: Some(ApplyPatchToolType::Function),
             web_search_tool_type: self.web_search_tool_type,
-            truncation_policy: TruncationPolicyConfig::tokens(10_000),
+            truncation_policy: TruncationPolicyConfig::tokens(/*limit*/ 10_000),
             supports_parallel_tool_calls: self.supports_parallel_tool_calls,
             supports_image_detail_original: input_modalities.contains(&InputModality::Image),
             context_window: Some(self.context_window),

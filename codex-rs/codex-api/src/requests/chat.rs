@@ -9,6 +9,7 @@ use codex_protocol::models::LocalShellAction;
 use codex_protocol::models::LocalShellStatus;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::provider_profiles::AssistantToolCallReasoningPolicy;
 use codex_protocol::provider_profiles::BuiltInProviderProfile;
 use codex_protocol::provider_profiles::ChatModelRewrite;
 use codex_protocol::provider_profiles::ChatReasoningFormat;
@@ -40,6 +41,7 @@ pub struct ChatRequestBuilder<'a> {
 struct ProviderBehavior {
     model: String,
     reasoning_format: Option<ChatReasoningFormat>,
+    assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy,
     supports_developer_role: bool,
     merges_system_messages: bool,
     hoists_system_messages_to_front: bool,
@@ -225,6 +227,7 @@ impl<'a> ChatRequestBuilder<'a> {
                             &mut messages,
                             &text,
                             behavior.reasoning_format,
+                            behavior.assistant_tool_call_reasoning,
                             reasoning,
                         ) {
                             continue;
@@ -307,6 +310,7 @@ impl<'a> ChatRequestBuilder<'a> {
                         &mut messages,
                         tool_call,
                         behavior.reasoning_format,
+                        behavior.assistant_tool_call_reasoning,
                         reasoning,
                     );
                 }
@@ -332,6 +336,7 @@ impl<'a> ChatRequestBuilder<'a> {
                         &mut messages,
                         tool_call,
                         behavior.reasoning_format,
+                        behavior.assistant_tool_call_reasoning,
                         reasoning,
                     );
                 }
@@ -379,6 +384,7 @@ impl<'a> ChatRequestBuilder<'a> {
                         &mut messages,
                         tool_call,
                         behavior.reasoning_format,
+                        behavior.assistant_tool_call_reasoning,
                         reasoning,
                     );
                 }
@@ -414,6 +420,7 @@ impl<'a> ChatRequestBuilder<'a> {
                         &mut messages,
                         tool_call,
                         behavior.reasoning_format,
+                        behavior.assistant_tool_call_reasoning,
                         reasoning,
                     );
                 }
@@ -542,6 +549,7 @@ fn push_tool_call_message(
     messages: &mut Vec<Value>,
     tool_call: Value,
     reasoning_format: Option<ChatReasoningFormat>,
+    assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy,
     reasoning: Option<&str>,
 ) {
     if let Some(Value::Object(object)) = messages.last_mut()
@@ -550,13 +558,12 @@ fn push_tool_call_message(
         && let Some(tool_calls) = object.get_mut("tool_calls").and_then(Value::as_array_mut)
     {
         tool_calls.push(tool_call);
-        if let Some(reasoning) = reasoning {
-            let mut tmp = Value::Object(object.clone());
-            attach_reasoning_field(&mut tmp, reasoning_format, reasoning);
-            if let Some(updated) = tmp.as_object() {
-                *object = updated.clone();
-            }
-        }
+        attach_assistant_tool_call_reasoning(
+            object,
+            reasoning_format,
+            assistant_tool_call_reasoning,
+            reasoning,
+        );
         return;
     }
 
@@ -565,8 +572,13 @@ fn push_tool_call_message(
         "content": null,
         "tool_calls": [tool_call],
     });
-    if let Some(reasoning) = reasoning {
-        attach_reasoning_field(&mut message, reasoning_format, reasoning);
+    if let Some(object) = message.as_object_mut() {
+        attach_assistant_tool_call_reasoning(
+            object,
+            reasoning_format,
+            assistant_tool_call_reasoning,
+            reasoning,
+        );
     }
     messages.push(message);
 }
@@ -575,6 +587,7 @@ fn append_assistant_content_to_pending_tool_call(
     messages: &mut [Value],
     text: &str,
     reasoning_format: Option<ChatReasoningFormat>,
+    assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy,
     reasoning: Option<&str>,
 ) -> bool {
     let Some(Value::Object(object)) = messages.last_mut() else {
@@ -600,15 +613,51 @@ fn append_assistant_content_to_pending_tool_call(
         );
     }
 
-    if let Some(reasoning) = reasoning {
-        let mut tmp = Value::Object(object.clone());
-        attach_reasoning_field(&mut tmp, reasoning_format, reasoning);
-        if let Some(updated) = tmp.as_object() {
-            *object = updated.clone();
-        }
-    }
+    attach_assistant_tool_call_reasoning(
+        object,
+        reasoning_format,
+        assistant_tool_call_reasoning,
+        reasoning,
+    );
 
     true
+}
+
+fn attach_assistant_tool_call_reasoning(
+    message: &mut Map<String, Value>,
+    reasoning_format: Option<ChatReasoningFormat>,
+    assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy,
+    reasoning: Option<&str>,
+) {
+    let has_existing_reasoning = match reasoning_format {
+        Some(ChatReasoningFormat::Reasoning) => message.contains_key("reasoning"),
+        Some(ChatReasoningFormat::ReasoningContent) => message.contains_key("reasoning_content"),
+        Some(ChatReasoningFormat::ReasoningDetails) => message.contains_key("reasoning_details"),
+        None => false,
+    };
+
+    let reasoning = reasoning.or(
+        match (
+            assistant_tool_call_reasoning,
+            reasoning_format,
+            has_existing_reasoning,
+        ) {
+            (
+                AssistantToolCallReasoningPolicy::EmitEmptyWhenMissing,
+                Some(ChatReasoningFormat::ReasoningContent),
+                false,
+            ) => Some(""),
+            _ => None,
+        },
+    );
+
+    if let Some(reasoning) = reasoning {
+        let mut tmp = Value::Object(message.clone());
+        attach_reasoning_field(&mut tmp, reasoning_format, reasoning);
+        if let Some(updated) = tmp.as_object() {
+            *message = updated.clone();
+        }
+    }
 }
 
 fn provider_behavior(
@@ -626,6 +675,7 @@ fn provider_behavior(
     ProviderBehavior {
         model: model.to_string(),
         reasoning_format: Some(ChatReasoningFormat::Reasoning),
+        assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy::OmitWhenMissing,
         supports_developer_role: provider_base.contains("openai.com")
             || provider_base.contains("chatgpt.com")
             || provider_name.contains("openai"),
@@ -654,6 +704,7 @@ fn provider_behavior_from_profile(
     ProviderBehavior {
         model,
         reasoning_format: profile.request_dialect.reasoning_format,
+        assistant_tool_call_reasoning: profile.request_dialect.assistant_tool_call_reasoning,
         supports_developer_role: profile.request_dialect.supports_developer_role,
         merges_system_messages: profile.request_dialect.merges_system_messages,
         hoists_system_messages_to_front: profile.request_dialect.hoists_system_messages_to_front,
@@ -701,6 +752,7 @@ mod tests {
     use codex_protocol::protocol::SubAgentSource;
     use codex_protocol::provider_profiles::DEEPSEEK_PROVIDER_ID;
     use codex_protocol::provider_profiles::GLM_PROVIDER_ID;
+    use codex_protocol::provider_profiles::KIMI_PROVIDER_ID;
     use codex_protocol::provider_profiles::MINIMAX_PROVIDER_ID;
     use codex_protocol::provider_profiles::built_in_provider_profile;
     use http::HeaderValue;
@@ -968,6 +1020,153 @@ mod tests {
         let assistant = &req.body["messages"].as_array().expect("messages")[2];
         assert_eq!(assistant["reasoning_content"], "inspect context");
         assert_eq!(assistant.get("reasoning"), None);
+    }
+
+    #[test]
+    fn kimi_emits_empty_reasoning_content_for_tool_calls_without_reasoning_items() {
+        let prompt_input = vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "hello".to_string(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "read_file".to_string(),
+                namespace: None,
+                arguments: r#"{"path":"README.md"}"#.to_string(),
+                call_id: "call-readme".to_string(),
+            },
+        ];
+
+        let req = ChatRequestBuilder::new("kimi-k2.5", "inst", &prompt_input, &[])
+            .provider_profile(built_in_provider_profile(KIMI_PROVIDER_ID))
+            .build(&provider(
+                "https://api.moonshot.cn/v1",
+                "Kimi (Moonshot AI)",
+            ))
+            .expect("request");
+
+        let assistant = &req.body["messages"].as_array().expect("messages")[2];
+        assert_eq!(assistant["tool_calls"][0]["id"], "call-readme");
+        assert_eq!(assistant["reasoning_content"], "");
+    }
+
+    #[test]
+    fn kimi_preserves_empty_reasoning_content_when_assistant_text_merges_into_tool_call() {
+        let prompt_input = vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "hello".to_string(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "read_file".to_string(),
+                namespace: None,
+                arguments: r#"{"path":"README.md"}"#.to_string(),
+                call_id: "call-readme".to_string(),
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "Inspecting the file now.".to_string(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+        ];
+
+        let req = ChatRequestBuilder::new("kimi-k2.5", "inst", &prompt_input, &[])
+            .provider_profile(built_in_provider_profile(KIMI_PROVIDER_ID))
+            .build(&provider(
+                "https://api.moonshot.cn/v1",
+                "Kimi (Moonshot AI)",
+            ))
+            .expect("request");
+
+        let assistant = &req.body["messages"].as_array().expect("messages")[2];
+        assert_eq!(assistant["content"], "Inspecting the file now.");
+        assert_eq!(assistant["reasoning_content"], "");
+    }
+
+    #[test]
+    fn kimi_preserves_non_empty_reasoning_content_across_grouped_tool_calls_and_text() {
+        let prompt_input = vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "analyze the repo".to_string(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::Reasoning {
+                id: String::new(),
+                summary: vec![],
+                content: Some(vec![
+                    codex_protocol::models::ReasoningItemContent::ReasoningText {
+                        text: "inspect layout before delegating".to_string(),
+                    },
+                ]),
+                encrypted_content: None,
+            },
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "exec_command".to_string(),
+                namespace: None,
+                arguments: r#"{"cmd":"pwd"}"#.to_string(),
+                call_id: "exec-1".to_string(),
+            },
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "exec_command".to_string(),
+                namespace: None,
+                arguments: r#"{"cmd":"ls"}"#.to_string(),
+                call_id: "exec-2".to_string(),
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "I will inspect the repo first.".to_string(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+        ];
+
+        let req = ChatRequestBuilder::new("kimi-k2.5", "inst", &prompt_input, &[])
+            .provider_profile(built_in_provider_profile(KIMI_PROVIDER_ID))
+            .build(&provider(
+                "https://api.moonshot.cn/v1",
+                "Kimi (Moonshot AI)",
+            ))
+            .expect("request");
+
+        let assistant = &req.body["messages"].as_array().expect("messages")[2];
+        assert_eq!(
+            assistant["reasoning_content"],
+            "inspect layout before delegating"
+        );
+        assert_eq!(
+            assistant["tool_calls"]
+                .as_array()
+                .expect("tool calls")
+                .len(),
+            2
+        );
+        assert_eq!(assistant["content"], "I will inspect the repo first.");
     }
 
     #[test]

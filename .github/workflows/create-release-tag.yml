@@ -1,0 +1,62 @@
+name: create-release-tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version that must match codex-rs/Cargo.toml
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Validate version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/')"
+          if [[ "${INPUT_VERSION}" != "${cargo_ver}" ]]; then
+            echo "workflow input version ${INPUT_VERSION} does not match codex-rs/Cargo.toml ${cargo_ver}" >&2
+            exit 1
+          fi
+
+          if [[ ! "${INPUT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]]; then
+            echo "version ${INPUT_VERSION} does not match release regex" >&2
+            exit 1
+          fi
+
+      - name: Create and push release tag
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="rust-v${VERSION}"
+          if git rev-parse "${tag}" >/dev/null 2>&1; then
+            echo "tag ${tag} already exists locally" >&2
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "tag ${tag} already exists on origin" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "Release ${VERSION}"
+          git push origin "${tag}"

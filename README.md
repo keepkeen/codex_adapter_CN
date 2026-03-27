@@ -117,6 +117,12 @@ export CODEX_SQLITE_HOME="$CODEX_HOME/sqlite"
 
 The packaged `codex-cn` launcher and the renamed standalone binary now default to `~/.codex-cn` when `CODEX_HOME` is unset. Explicitly exporting the two variables above is still the safest option for source builds, wrappers, and CI.
 
+### Release automation
+
+This fork now publishes GitHub Release assets automatically from `.github/workflows/rust-release.yml` when you push a tag like `rust-v0.1.0`. To avoid remembering the tag format by hand, the repo also includes `.github/workflows/create-release-tag.yml`, which can be run manually from GitHub Actions and will create/push the matching `rust-v<version>` tag for you.
+
+For fork safety, GitHub Release asset upload is now decoupled from npm publication. Releases are created normally on this fork, but npm publication only runs when the repository variable `ENABLE_NPM_PUBLISH=true` is set after you have finished the bootstrap/trusted-publishing setup for `@keepkeen/*`.
+
 隔离原则：
 
 - 不要用 `codex-cn` 去覆盖系统里的 `codex`

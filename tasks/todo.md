@@ -1,5 +1,14 @@
 # Todo
 
+## GitHub Release Automation (2026-03-27)
+
+- [ ] 盘点当前 fork 的 release 触发条件、现有 GitHub Actions 资产上传链路，以及为什么仓库还没有 release。
+- [ ] 为 fork 增加更直接的 release 入口，避免以后只能手工记忆 tag 规则。
+- [ ] 调整 release workflow，让 GitHub Release 资产上传与 fork 的 npm 发布开关解耦，保证首个 release 不会因为 npm bootstrap 阻塞而整体失败。
+- [ ] 选择并落实 fork 的首个正式 release 版本号，必要时更新 workspace version 与相关说明。
+- [ ] 提交、推送、打 tag，并确认 GitHub release workflow 已启动或 release 已创建。
+
+
 ## Publishing Readiness Review (2026-03-27)
 
 - [x] Inspect `.github/workflows/rust-release.yml` for npm trusted publishing permissions, triggers, and publish gating.
@@ -473,3 +482,14 @@
 - 本轮对三家 `--search` live regression 的结论仍然保守：
   - GLM 已在真实 rollout `rollout-2026-03-26T16-19-44-019d293a-5cfd-7ea3-a805-b7ca6ad9ab7d.jsonl` 中证明过真实 `function_call name="web_search"` 和 `function_call_output` 链路会发生；当时外部搜索源返回了 `No web results found`，这正是本轮 GitHub fallback 修复要覆盖的情况。
   - 但修复后的 `glm` / `kimi` / `minimax` 在 `exec --search` 下仍存在模型侧是否稳定主动选用 `web_search` 的波动，当前更像模型行为稳定性问题，而不是工具协议已经断裂；因此三家的 live search 仍未全部记为“稳定全绿”。
+- 本轮修复了 Kimi `kimi-k2.5` 在 thinking + tool replay 下的真实兼容错误：
+  - 根因是 chat request builder 只会在命中 `ResponseItem::Reasoning` 锚点时才给 assistant `tool_calls` 消息附带 `reasoning_content`；Kimi 一旦把会话判为 thinking enabled，就要求历史里的每条 assistant tool-call message 都显式带该字段。
+  - 现在 provider profile 已新增 `assistant_tool_call_reasoning` 语义，Kimi 走 `EmitEmptyWhenMissing`，其余 provider 仍维持原行为。
+  - `codex-rs/codex-api/src/requests/chat.rs` 新增了两条回归测试：无 reasoning item 的 Kimi tool call 会补空 `reasoning_content`，tool call 后追加 assistant 文本时也会保留该字段。
+  - 真实回归已通过：临时隔离目录 `/tmp/codex-kimi-fix.h10f7n` 下，两轮 `exec --json` 连续强制调用 shell tool 都成功完成；第二轮 `run2.jsonl` 已记录 `command_execution -> agent_message -> turn.completed`，不再出现 `reasoning_content is missing in assistant tool call message`。
+- 在用户补充 Moonshot 官方文档后，又补掉了一个更深的 Kimi 边界：
+  - 官方要求在多步工具调用中“保留本轮 assistant tool-call message 里的 `reasoning_content`”；这不只是“字段存在”，而是已有的真实推理内容不能在历史重放时被后续分组项冲掉。
+  - 具体 bug 是 `codex-rs/codex-api/src/requests/chat.rs` 在把连续 `function_call` 合并成同一条 assistant tool-call message 时，第一条调用会带上真实 `reasoning_content`，但后面的 grouped tool call 或追加 assistant 文本在 `reasoning=None` 的情况下又会按 Kimi 策略回填空串，等于把真实推理覆盖掉。
+  - 现在 `attach_assistant_tool_call_reasoning()` 会先检查消息上是否已经存在对应的 reasoning 字段；只有“当前消息还没有任何 reasoning 字段”时，Kimi 才补空 `reasoning_content`。
+  - 新增回归测试 `kimi_preserves_non_empty_reasoning_content_across_grouped_tool_calls_and_text` 已锁住“真实推理 + 两次 grouped tool calls + 后续 assistant 文本合并”这条路径。
+  - 最新真实回归已通过：临时隔离目录 `/tmp/kimi-multi-tool.07vKNZ` 下，第一轮强制两次独立 `exec_command`，第二轮 `resume` 同一线程后再次强制两次独立 `exec_command`，结果都是 `2 x command_execution + 1 x agent_message + 1 x turn.completed`，没有再出现 `thinking is enabled but reasoning_content is missing in assistant tool call message`。

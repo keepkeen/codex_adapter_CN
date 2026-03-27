@@ -6,6 +6,7 @@ use self::catalog::BundledModelCatalogEntry;
 
 pub use self::catalog::bundled_model_catalog;
 pub use self::catalog::resolve_bundled_model_lookup_alias;
+pub use self::dialects::AssistantToolCallReasoningPolicy;
 pub use self::dialects::ChatModelRewrite;
 pub use self::dialects::ChatReasoningFormat;
 pub use self::dialects::ChatRequestDialect;
@@ -70,6 +71,7 @@ const OPENAI_PROFILE: BuiltInProviderProfile = BuiltInProviderProfile {
     request_dialect: ChatRequestDialect {
         model_rewrite: ChatModelRewrite::Identity,
         reasoning_format: Some(ChatReasoningFormat::Reasoning),
+        assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy::OmitWhenMissing,
         supports_developer_role: true,
         merges_system_messages: false,
         hoists_system_messages_to_front: false,
@@ -115,6 +117,7 @@ const DEEPSEEK_PROFILE: BuiltInProviderProfile = BuiltInProviderProfile {
     request_dialect: ChatRequestDialect {
         model_rewrite: ChatModelRewrite::DeepSeekThinking,
         reasoning_format: Some(ChatReasoningFormat::ReasoningContent),
+        assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy::OmitWhenMissing,
         supports_developer_role: false,
         merges_system_messages: false,
         hoists_system_messages_to_front: false,
@@ -160,6 +163,7 @@ const GLM_PROFILE: BuiltInProviderProfile = BuiltInProviderProfile {
     request_dialect: ChatRequestDialect {
         model_rewrite: ChatModelRewrite::Identity,
         reasoning_format: Some(ChatReasoningFormat::ReasoningContent),
+        assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy::OmitWhenMissing,
         supports_developer_role: false,
         merges_system_messages: false,
         hoists_system_messages_to_front: false,
@@ -205,6 +209,7 @@ const KIMI_PROFILE: BuiltInProviderProfile = BuiltInProviderProfile {
     request_dialect: ChatRequestDialect {
         model_rewrite: ChatModelRewrite::Identity,
         reasoning_format: Some(ChatReasoningFormat::ReasoningContent),
+        assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy::EmitEmptyWhenMissing,
         supports_developer_role: false,
         merges_system_messages: false,
         hoists_system_messages_to_front: false,
@@ -250,6 +255,7 @@ const MINIMAX_PROFILE: BuiltInProviderProfile = BuiltInProviderProfile {
     request_dialect: ChatRequestDialect {
         model_rewrite: ChatModelRewrite::Identity,
         reasoning_format: Some(ChatReasoningFormat::ReasoningDetails),
+        assistant_tool_call_reasoning: AssistantToolCallReasoningPolicy::OmitWhenMissing,
         supports_developer_role: false,
         merges_system_messages: true,
         hoists_system_messages_to_front: true,

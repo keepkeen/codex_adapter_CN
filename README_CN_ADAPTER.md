@@ -217,6 +217,39 @@ CODEX_HOME="$HOME/.codex-cn" CODEX_SQLITE_HOME="$HOME/.codex-cn/sqlite" codex-cn
 - `npm whoami --registry=https://registry.npmjs.org/` 返回 `ENEEDAUTH`
 - 这台机器目前无法直接把 `@keepkeen/*` 包发布到 npm，需要先登录 npm 或使用已配置好的 trusted publishing 流程
 
+## Release 发布
+
+这个 fork 现在已经有可直接使用的 GitHub Release 自动上传链路：
+
+- 触发方式 1：push 一个符合规则的 tag，例如 `rust-v0.1.0`
+- 触发方式 2：在 GitHub Actions 里手动运行 `create-release-tag`，输入和 `codex-rs/Cargo.toml` 一致的版本号
+- 真正负责构建和上传资产的 workflow 是 `.github/workflows/rust-release.yml`
+
+首个正式 release 版本现在定为 `0.1.0`。GitHub Release 会自动上传：
+
+- `codex-cn-<target>`
+- `codex-cn-<target>.tar.gz`
+- `codex-cn-<target>.dmg`（macOS）
+- `codex-cn-responses-api-proxy-<target>`
+- `config-schema.json`
+- `install.sh`
+- `install.ps1`
+- 对应的 npm tarballs
+
+为了避免 fork 的 GitHub Release 被 npm 首发权限问题拖红，`rust-release.yml` 现在对 fork 默认关闭 npm 发布：
+
+- upstream `openai/codex` 仍保持原行为
+- 这个 fork 只有在仓库变量 `ENABLE_NPM_PUBLISH=true` 时才会继续执行 `publish-npm`
+- 这意味着 GitHub Release 资产上传现在可以独立成功
+
+如果以后你把 `@keepkeen/*` 的 bootstrap publish 和 trusted publishing 都配好了，再到仓库 Settings 里加：
+
+```text
+ENABLE_NPM_PUBLISH=true
+```
+
+之后新的 release tag 就会继续走自动 npm 发布。
+
 ## 补充说明
 
 - DeepSeek 旧别名 `deepseek-chat-thinking` / `deepseek-thinking` 仍兼容。
