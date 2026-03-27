@@ -8,7 +8,6 @@ Upstream OpenAI Codex docs still live at <a href="https://developers.openai.com/
 </br>If you want the upstream OpenAI desktop app experience, run <code>codex-cn app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
 </br>If you are looking for the <em>cloud-based agent</em> from OpenAI, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
 
----
 
 ### Using codex-cn with your ChatGPT plan
 
