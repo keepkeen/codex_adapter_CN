@@ -8,17 +8,17 @@ on:
         type: string
     secrets:
       AZURE_TRUSTED_SIGNING_CLIENT_ID:
-        required: true
+        required: false
       AZURE_TRUSTED_SIGNING_TENANT_ID:
-        required: true
+        required: false
       AZURE_TRUSTED_SIGNING_SUBSCRIPTION_ID:
-        required: true
+        required: false
       AZURE_TRUSTED_SIGNING_ENDPOINT:
-        required: true
+        required: false
       AZURE_TRUSTED_SIGNING_ACCOUNT_NAME:
-        required: true
+        required: false
       AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME:
-        required: true
+        required: false
 
 jobs:
   build-windows-binaries:
@@ -41,30 +41,22 @@ jobs:
             target: x86_64-pc-windows-msvc
             bundle: primary
             build_args: --bin codex --bin codex-responses-api-proxy
-            runs_on:
-              group: codex-runners
-              labels: codex-windows-x64
+            runs_on: windows-2025
           - runner: windows-arm64
             target: aarch64-pc-windows-msvc
             bundle: primary
             build_args: --bin codex --bin codex-responses-api-proxy
-            runs_on:
-              group: codex-runners
-              labels: codex-windows-arm64
+            runs_on: windows-2025
           - runner: windows-x64
             target: x86_64-pc-windows-msvc
             bundle: helpers
             build_args: --bin codex-windows-sandbox-setup --bin codex-command-runner
-            runs_on:
-              group: codex-runners
-              labels: codex-windows-x64
+            runs_on: windows-2025
           - runner: windows-arm64
             target: aarch64-pc-windows-msvc
             bundle: helpers
             build_args: --bin codex-windows-sandbox-setup --bin codex-command-runner
-            runs_on:
-              group: codex-runners
-              labels: codex-windows-arm64
+            runs_on: windows-2025
 
     steps:
       - uses: actions/checkout@v6
@@ -130,6 +122,14 @@ jobs:
     defaults:
       run:
         working-directory: codex-rs
+    env:
+      RELEASE_AZURE_TRUSTED_SIGNING_CLIENT_ID: ${{ secrets.AZURE_TRUSTED_SIGNING_CLIENT_ID }}
+      RELEASE_AZURE_TRUSTED_SIGNING_TENANT_ID: ${{ secrets.AZURE_TRUSTED_SIGNING_TENANT_ID }}
+      RELEASE_AZURE_TRUSTED_SIGNING_SUBSCRIPTION_ID: ${{ secrets.AZURE_TRUSTED_SIGNING_SUBSCRIPTION_ID }}
+      RELEASE_AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+      RELEASE_AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+      RELEASE_AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
+      WINDOWS_SIGNING_CONFIGURED: ${{ secrets.AZURE_TRUSTED_SIGNING_CLIENT_ID != '' && secrets.AZURE_TRUSTED_SIGNING_TENANT_ID != '' && secrets.AZURE_TRUSTED_SIGNING_SUBSCRIPTION_ID != '' && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT != '' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME != '' && secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME != '' }}
 
     strategy:
       fail-fast: false
@@ -137,14 +137,10 @@ jobs:
         include:
           - runner: windows-x64
             target: x86_64-pc-windows-msvc
-            runs_on:
-              group: codex-runners
-              labels: codex-windows-x64
+            runs_on: windows-2025
           - runner: windows-arm64
             target: aarch64-pc-windows-msvc
-            runs_on:
-              group: codex-runners
-              labels: codex-windows-arm64
+            runs_on: windows-2025
 
     steps:
       - uses: actions/checkout@v6
@@ -171,15 +167,21 @@ jobs:
           ls -lh target/${{ matrix.target }}/release/codex-command-runner.exe
 
       - name: Sign Windows binaries with Azure Trusted Signing
+        if: ${{ env.WINDOWS_SIGNING_CONFIGURED == 'true' }}
         uses: ./.github/actions/windows-code-sign
         with:
           target: ${{ matrix.target }}
-          client-id: ${{ secrets.AZURE_TRUSTED_SIGNING_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TRUSTED_SIGNING_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_TRUSTED_SIGNING_SUBSCRIPTION_ID }}
-          endpoint: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
-          account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
+          client-id: ${{ env.RELEASE_AZURE_TRUSTED_SIGNING_CLIENT_ID }}
+          tenant-id: ${{ env.RELEASE_AZURE_TRUSTED_SIGNING_TENANT_ID }}
+          subscription-id: ${{ env.RELEASE_AZURE_TRUSTED_SIGNING_SUBSCRIPTION_ID }}
+          endpoint: ${{ env.RELEASE_AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          account-name: ${{ env.RELEASE_AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ env.RELEASE_AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
+
+      - name: Skip signing when Azure signing secrets are unavailable
+        if: ${{ env.WINDOWS_SIGNING_CONFIGURED != 'true' }}
+        shell: bash
+        run: echo "Azure Trusted Signing secrets are not configured; publishing unsigned Windows release artifacts for this fork."
 
       - name: Stage artifacts
         shell: bash

@@ -48,7 +48,7 @@ jobs:
   build:
     needs: tag-check
     name: Build - ${{ matrix.runner }} - ${{ matrix.target }}
-    runs-on: ${{ matrix.runs_on || matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -60,6 +60,12 @@ jobs:
       # 2026-03-04: temporarily change releases to use thin LTO because
       # Ubuntu ARM is timing out at 60 minutes.
       CARGO_PROFILE_RELEASE_LTO: ${{ contains(github.ref_name, '-alpha') && 'thin' || 'thin' }}
+      RELEASE_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      RELEASE_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      RELEASE_APPLE_NOTARIZATION_KEY_P8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
+      RELEASE_APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+      RELEASE_APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+      MACOS_SIGNING_CONFIGURED: ${{ secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_NOTARIZATION_KEY_P8 != '' && secrets.APPLE_NOTARIZATION_KEY_ID != '' && secrets.APPLE_NOTARIZATION_ISSUER_ID != '' }}
 
     strategy:
       fail-fast: false
@@ -248,18 +254,18 @@ jobs:
           target: ${{ matrix.target }}
           artifacts-dir: ${{ github.workspace }}/codex-rs/target/${{ matrix.target }}/release
 
-      - if: ${{ runner.os == 'macOS' }}
+      - if: ${{ runner.os == 'macOS' && env.MACOS_SIGNING_CONFIGURED == 'true' }}
         name: MacOS code signing (binaries)
         uses: ./.github/actions/macos-code-sign
         with:
           target: ${{ matrix.target }}
           sign-binaries: "true"
           sign-dmg: "false"
-          apple-certificate: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          apple-certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          apple-notarization-key-p8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
-          apple-notarization-key-id: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-          apple-notarization-issuer-id: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+          apple-certificate: ${{ env.RELEASE_APPLE_CERTIFICATE }}
+          apple-certificate-password: ${{ env.RELEASE_APPLE_CERTIFICATE_PASSWORD }}
+          apple-notarization-key-p8: ${{ env.RELEASE_APPLE_NOTARIZATION_KEY_P8 }}
+          apple-notarization-key-id: ${{ env.RELEASE_APPLE_NOTARIZATION_KEY_ID }}
+          apple-notarization-issuer-id: ${{ env.RELEASE_APPLE_NOTARIZATION_ISSUER_ID }}
 
       - if: ${{ runner.os == 'macOS' }}
         name: Build macOS dmg
@@ -307,18 +313,23 @@ jobs:
             exit 1
           fi
 
-      - if: ${{ runner.os == 'macOS' }}
+      - if: ${{ runner.os == 'macOS' && env.MACOS_SIGNING_CONFIGURED != 'true' }}
+        name: Skip macOS code signing when Apple credentials are unavailable
+        shell: bash
+        run: echo "Apple signing credentials are not configured; publishing unsigned macOS release artifacts for this fork."
+
+      - if: ${{ runner.os == 'macOS' && env.MACOS_SIGNING_CONFIGURED == 'true' }}
         name: MacOS code signing (dmg)
         uses: ./.github/actions/macos-code-sign
         with:
           target: ${{ matrix.target }}
           sign-binaries: "false"
           sign-dmg: "true"
-          apple-certificate: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          apple-certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          apple-notarization-key-p8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
-          apple-notarization-key-id: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-          apple-notarization-issuer-id: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+          apple-certificate: ${{ env.RELEASE_APPLE_CERTIFICATE }}
+          apple-certificate-password: ${{ env.RELEASE_APPLE_CERTIFICATE_PASSWORD }}
+          apple-notarization-key-p8: ${{ env.RELEASE_APPLE_NOTARIZATION_KEY_P8 }}
+          apple-notarization-key-id: ${{ env.RELEASE_APPLE_NOTARIZATION_KEY_ID }}
+          apple-notarization-issuer-id: ${{ env.RELEASE_APPLE_NOTARIZATION_ISSUER_ID }}
 
       - name: Stage artifacts
         shell: bash
