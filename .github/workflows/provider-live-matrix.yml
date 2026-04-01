@@ -213,7 +213,7 @@ jobs:
         run: cargo test -p ${{ matrix.package }} --test all "${{ matrix.test_filter }}" -- --ignored --exact --nocapture
       - name: Upload live smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: provider-live-${{ matrix.provider_id }}-${{ matrix.workflow_id }}
           path: codex-rs/provider-live-artifacts
